@@ -29,7 +29,24 @@ def _get_embeddings(model_name: str) -> HuggingFaceEmbeddings:
     global _embeddings_cache
     if _embeddings_cache is None:
         logger.info("Loading embedding model: %s (first load may take 1-2 min)", model_name)
-        _embeddings_cache = HuggingFaceEmbeddings(model_name=model_name)
+        try:
+            _embeddings_cache = HuggingFaceEmbeddings(
+                model_name=model_name,
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            )
+        except Exception as e:
+            # Fallback: if meta tensor error persists, load with safetensors disabled
+            logger.warning("Default loading failed (%s), trying fallback...", e)
+            import torch
+            _embeddings_cache = HuggingFaceEmbeddings(
+                model_name=model_name,
+                model_kwargs={
+                    "device": "cpu",
+                    "torch_dtype": torch.float32,
+                },
+                encode_kwargs={"normalize_embeddings": True},
+            )
         logger.info("Embedding model loaded successfully")
     return _embeddings_cache
 

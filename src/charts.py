@@ -55,8 +55,9 @@ def detect_columns(prompt: str, df: pd.DataFrame) -> Tuple[str, str]:
 
     Strategy:
     1. Look for column names explicitly mentioned in the prompt.
-    2. Assign numeric columns to y-axis, text columns to x-axis.
-    3. Fall back to first text/numeric column pair.
+    2. If two columns are mentioned, use them as x and y (order of mention).
+    3. Assign numeric columns to y-axis, text columns to x-axis.
+    4. Fall back to first text/numeric column pair.
 
     Args:
         prompt: The user's question.
@@ -72,24 +73,56 @@ def detect_columns(prompt: str, df: pd.DataFrame) -> Tuple[str, str]:
     prompt_lower = prompt.lower()
 
     # Try to find columns explicitly mentioned in the question
-    mentioned_cols = [col for col in all_cols if col.lower() in prompt_lower]
+    # Preserve order of mention in the prompt for correct x/y assignment
+    mentioned_cols = []
+    for col in all_cols:
+        pos = prompt_lower.find(col.lower())
+        if pos != -1:
+            mentioned_cols.append((pos, col))
+    mentioned_cols.sort(key=lambda x: x[0])
+    mentioned_cols = [col for _, col in mentioned_cols]
 
     x_col = None
     y_col = None
 
-    # Assign mentioned columns to x or y based on type
-    for col in mentioned_cols:
-        if col in numeric_cols and y_col is None:
+    if len(mentioned_cols) >= 2:
+        # Two or more columns mentioned — first mentioned is x, second is y
+        x_col = mentioned_cols[0]
+        y_col = mentioned_cols[1]
+    elif len(mentioned_cols) == 1:
+        col = mentioned_cols[0]
+        if col in numeric_cols:
             y_col = col
-        elif col not in numeric_cols and x_col is None:
+        else:
             x_col = col
 
-    # If we found a numeric mention but no x, and also a text mention but no y — swap isn't needed
-    # Just fill in defaults for whatever is missing
+    # Fill in defaults for whatever is missing, ensuring x != y
     if x_col is None:
-        x_col = text_cols[0] if text_cols else all_cols[0]
+        if text_cols:
+            x_col = text_cols[0]
+        else:
+            # All columns are numeric — pick first one that isn't y_col
+            for c in all_cols:
+                if c != y_col:
+                    x_col = c
+                    break
+            if x_col is None:
+                x_col = all_cols[0]
+
     if y_col is None:
-        y_col = numeric_cols[0] if numeric_cols else (all_cols[1] if len(all_cols) > 1 else all_cols[0])
+        # Pick first numeric column that isn't x_col
+        for c in numeric_cols:
+            if c != x_col:
+                y_col = c
+                break
+        if y_col is None:
+            # Fallback: pick any column that isn't x_col
+            for c in all_cols:
+                if c != x_col:
+                    y_col = c
+                    break
+            if y_col is None:
+                y_col = all_cols[0]
 
     logger.info("Column detection: x=%s, y=%s", x_col, y_col)
     return x_col, y_col
@@ -118,7 +151,11 @@ def generate_chart(
     logger.info("Generating %s chart: x=%s, y=%s", chart_type, x_col, y_col)
 
     # Group data for aggregate charts
-    if chart_type in ("bar", "line", "pie"):
+    # Skip groupby when both columns are numeric (scatter-like data) to avoid
+    # pandas "cannot insert X, already exists" error
+    both_numeric = (x_col in df.select_dtypes(include="number").columns and
+                    y_col in df.select_dtypes(include="number").columns)
+    if chart_type in ("bar", "line", "pie") and not both_numeric and x_col != y_col:
         grouped = df.groupby(x_col)[y_col].sum().reset_index()
     else:
         grouped = df
