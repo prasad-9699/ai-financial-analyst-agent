@@ -1,3 +1,998 @@
+# """
+# AI Financial Analyst Agent — Main Streamlit Application.
+
+# A production-ready AI assistant that analyzes CSV data, answers questions
+# from PDF documents, generates interactive charts, and provides general
+# financial insights — all through natural language.
+# """
+
+# from string import Template
+
+# import streamlit as st
+
+# from src.config import (
+#     AppConfig,
+#     ConfigurationError,
+#     FileValidationError,
+#     RAGProcessingError,
+#     load_config,
+#     setup_logging,
+# )
+# from src.llm import create_llm, invoke_llm_with_retry, chat_with_history
+# from src.csv_agent import analyze_csv
+# from src.pdf_rag import process_pdf, query_pdf
+# from src.charts import detect_chart_type, detect_columns, generate_chart
+# from src.router import Route, route_question
+# from src.utils import (
+#     format_dataframe_info,
+#     sanitize_user_input,
+#     validate_csv,
+#     validate_file_size,
+# )
+
+# # ══════════════════════════════════════════════════════
+# # PAGE CONFIG
+# # ══════════════════════════════════════════════════════
+# st.set_page_config(
+#     page_title="AI Financial Analyst Agent",
+#     page_icon="📊",
+#     layout="wide",
+#     initial_sidebar_state="expanded",
+# )
+
+# # ══════════════════════════════════════════════════════
+# # INITIALIZATION (before CSS to avoid tokenizer issues)
+# # ══════════════════════════════════════════════════════
+
+# try:
+#     config = load_config()
+# except ConfigurationError as e:
+#     st.error(f"⚙️ **Configuration Error**\n\n{e}")
+#     st.stop()
+
+# logger = setup_logging(config.log_level)
+
+
+# @st.cache_resource
+# def get_llm():
+#     """Cached LLM factory."""
+#     return create_llm(config)
+
+
+# try:
+#     llm = get_llm()
+# except Exception as e:
+#     st.error(f"🔌 **Could not connect to AI model**\n\n{e}")
+#     st.stop()
+
+# # ══════════════════════════════════════════════════════
+# # THEME STATE
+# # ══════════════════════════════════════════════════════
+# if "theme" not in st.session_state:
+#     st.session_state.theme = "dark"
+
+# is_dark = st.session_state.theme == "dark"
+
+# # ══════════════════════════════════════════════════════
+# # THEME DEFINITIONS
+# # ══════════════════════════════════════════════════════
+# DARK_THEME = {
+#     "bg_main": "#080C18",
+#     "bg_sidebar": "#0A1020",
+#     "bg_card": "rgba(15, 23, 42, 0.6)",
+#     "bg_card_solid": "#0F172A",
+#     "bg_input": "#0F172A",
+#     "border": "rgba(45, 212, 191, 0.12)",
+#     "border_subtle": "rgba(255,255,255,0.06)",
+#     "text_main": "#E2E8F0",
+#     "text_sec": "#94A3B8",
+#     "text_muted": "#64748B",
+#     "accent": "#2DD4BF",
+#     "accent_secondary": "#818CF8",
+#     "accent_grad": "linear-gradient(135deg, #2DD4BF, #06B6D4)",
+#     "accent_grad_hover": "linear-gradient(135deg, #34D399, #2DD4BF)",
+#     "success": "#4ADE80",
+#     "chat_user": "rgba(15, 23, 42, 0.5)",
+#     "chat_asst": "rgba(13, 20, 36, 0.6)",
+#     "chat_user_b": "#818CF8",
+#     "chat_asst_b": "#2DD4BF",
+#     "input_bdr": "rgba(45, 212, 191, 0.2)",
+#     "badge_bg": "rgba(45, 212, 191, 0.08)",
+#     "badge_bdr": "rgba(45, 212, 191, 0.2)",
+#     "hero_title": "#FFFFFF",
+#     "hero_accent": "#2DD4BF",
+#     "code_color": "#2DD4BF",
+#     "shadow": "0 8px 32px rgba(0,0,0,0.5)",
+#     "glow": "0 0 30px rgba(45, 212, 191, 0.15)",
+#     "orb1": "rgba(45, 212, 191, 0.06)",
+#     "orb2": "rgba(129, 140, 248, 0.05)",
+#     "glass_bg": "rgba(15, 23, 42, 0.4)",
+#     "glass_border": "rgba(45, 212, 191, 0.1)",
+# }
+
+# LIGHT_THEME = {
+#     "bg_main": "#F8FAFC",
+#     "bg_sidebar": "#FFFFFF",
+#     "bg_card": "rgba(255, 255, 255, 0.8)",
+#     "bg_card_solid": "#FFFFFF",
+#     "bg_input": "#FFFFFF",
+#     "border": "rgba(14, 116, 144, 0.12)",
+#     "border_subtle": "rgba(0,0,0,0.06)",
+#     "text_main": "#0F172A",
+#     "text_sec": "#475569",
+#     "text_muted": "#94A3B8",
+#     "accent": "#0D9488",
+#     "accent_secondary": "#6366F1",
+#     "accent_grad": "linear-gradient(135deg, #0D9488, #06B6D4)",
+#     "accent_grad_hover": "linear-gradient(135deg, #14B8A6, #0D9488)",
+#     "success": "#16A34A",
+#     "chat_user": "rgba(241, 245, 249, 0.8)",
+#     "chat_asst": "rgba(255, 255, 255, 0.9)",
+#     "chat_user_b": "#6366F1",
+#     "chat_asst_b": "#0D9488",
+#     "input_bdr": "rgba(14, 116, 144, 0.2)",
+#     "badge_bg": "rgba(13, 148, 136, 0.06)",
+#     "badge_bdr": "rgba(13, 148, 136, 0.15)",
+#     "hero_title": "#0F172A",
+#     "hero_accent": "#0D9488",
+#     "code_color": "#0D9488",
+#     "shadow": "0 8px 32px rgba(0,0,0,0.06)",
+#     "glow": "0 0 30px rgba(13, 148, 136, 0.08)",
+#     "orb1": "rgba(13, 148, 136, 0.04)",
+#     "orb2": "rgba(99, 102, 241, 0.03)",
+#     "glass_bg": "rgba(255, 255, 255, 0.5)",
+#     "glass_border": "rgba(13, 148, 136, 0.08)",
+# }
+
+# # ══════════════════════════════════════════════════════
+# # CSS TEMPLATE (uses string.Template with $ — safe with CSS)
+# # ══════════════════════════════════════════════════════
+# CSS_TEMPLATE = Template("""
+# <style>
+# @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+# /* === GLOBAL === */
+# html, body, .stApp, [data-testid="stAppViewContainer"],
+# [data-testid="stAppViewBlockContainer"] {
+#     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+#     background-color: $bg_main !important;
+# }
+# .stApp { background-color: $bg_main !important; }
+
+# /* Force text colors */
+# .stApp, .stApp p, .stApp span, .stApp div, .stApp label,
+# .stApp li, .stApp td, .stApp th, .stApp h1, .stApp h2,
+# .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+# .stApp .stMarkdown, .stApp .stMarkdown p,
+# .stApp .stMarkdown span, .stApp .stMarkdown li,
+# .stApp .stMarkdown strong, .stApp .stMarkdown em,
+# .stApp figcaption, .stApp caption {
+#     color: $text_main !important;
+#     -webkit-text-fill-color: $text_main !important;
+# }
+# .stApp a { color: $accent !important; -webkit-text-fill-color: $accent !important; }
+# .stApp code { color: $code_color !important; -webkit-text-fill-color: $code_color !important; }
+# .stCaption, .stCaption span {
+#     color: $text_muted !important;
+#     -webkit-text-fill-color: $text_muted !important;
+# }
+
+# /* === HIDE DEFAULTS === */
+# #MainMenu { visibility: hidden; }
+# footer { visibility: hidden; }
+# header { visibility: hidden; }
+
+# /* === ANIMATED FLOATING ORBS === */
+# .stApp::before,
+# .stApp::after {
+#     content: '';
+#     position: fixed;
+#     border-radius: 50%;
+#     pointer-events: none;
+#     z-index: 0;
+# }
+# .stApp::before {
+#     width: 600px; height: 600px;
+#     top: -10%; right: -5%;
+#     background: radial-gradient(circle, $orb1 0%, transparent 70%);
+#     animation: floatOrb1 20s ease-in-out infinite;
+# }
+# .stApp::after {
+#     width: 500px; height: 500px;
+#     bottom: -10%; left: -5%;
+#     background: radial-gradient(circle, $orb2 0%, transparent 70%);
+#     animation: floatOrb2 25s ease-in-out infinite;
+# }
+# @keyframes floatOrb1 {
+#     0%, 100% { transform: translate(0, 0) scale(1); }
+#     33% { transform: translate(-40px, 60px) scale(1.1); }
+#     66% { transform: translate(30px, -40px) scale(0.95); }
+# }
+# @keyframes floatOrb2 {
+#     0%, 100% { transform: translate(0, 0) scale(1); }
+#     33% { transform: translate(50px, -30px) scale(1.05); }
+#     66% { transform: translate(-40px, 50px) scale(0.9); }
+# }
+
+# /* === SCROLLBAR === */
+# ::-webkit-scrollbar { width: 6px; }
+# ::-webkit-scrollbar-track { background: transparent; }
+# ::-webkit-scrollbar-thumb { background: $accent; border-radius: 3px; }
+# ::-webkit-scrollbar-thumb:hover { background: $accent; }
+
+# /* === SIDEBAR === */
+# section[data-testid="stSidebar"] {
+#     background-color: $bg_sidebar !important;
+#     border-right: 1px solid $border !important;
+#     backdrop-filter: blur(20px);
+#     -webkit-backdrop-filter: blur(20px);
+# }
+# section[data-testid="stSidebar"] p,
+# section[data-testid="stSidebar"] span,
+# section[data-testid="stSidebar"] label,
+# section[data-testid="stSidebar"] div,
+# section[data-testid="stSidebar"] li,
+# section[data-testid="stSidebar"] small,
+# section[data-testid="stSidebar"] .stMarkdown p,
+# section[data-testid="stSidebar"] h1,
+# section[data-testid="stSidebar"] h2,
+# section[data-testid="stSidebar"] h3,
+# section[data-testid="stSidebar"] h4,
+# section[data-testid="stSidebar"] h5 {
+#     color: $text_main !important;
+#     -webkit-text-fill-color: $text_main !important;
+# }
+
+# /* === HERO === */
+# .hero-wrap {
+#     text-align: center;
+#     padding: 3rem 1rem 2rem;
+#     position: relative;
+#     z-index: 1;
+# }
+# .hero-label {
+#     display: inline-flex;
+#     align-items: center;
+#     gap: 8px;
+#     font-size: 0.7rem;
+#     font-weight: 700;
+#     letter-spacing: 3px;
+#     text-transform: uppercase;
+#     color: $accent !important;
+#     -webkit-text-fill-color: $accent !important;
+#     margin-bottom: 1.5rem;
+#     opacity: 0.9;
+# }
+# .hero-label-dash {
+#     width: 24px;
+#     height: 1px;
+#     background: $accent;
+#     display: inline-block;
+# }
+# .hero-heading {
+#     font-size: 3rem;
+#     font-weight: 900;
+#     color: $hero_title !important;
+#     -webkit-text-fill-color: $hero_title !important;
+#     margin: 0 0 0.5rem 0;
+#     line-height: 1.1;
+#     letter-spacing: -1.5px;
+# }
+# .hero-heading .hero-accent {
+#     color: $hero_accent !important;
+#     -webkit-text-fill-color: $hero_accent !important;
+# }
+# .hero-sub {
+#     font-size: 1rem;
+#     color: $text_sec !important;
+#     -webkit-text-fill-color: $text_sec !important;
+#     max-width: 560px;
+#     margin: 0 auto;
+#     line-height: 1.8;
+#     font-weight: 300;
+# }
+# .hero-chips {
+#     display: flex;
+#     justify-content: center;
+#     gap: 2rem;
+#     margin-top: 1.5rem;
+#     flex-wrap: wrap;
+# }
+# .hero-chip-item {
+#     text-align: center;
+# }
+# .hero-chip-value {
+#     font-size: 1.1rem;
+#     font-weight: 800;
+#     color: $accent !important;
+#     -webkit-text-fill-color: $accent !important;
+# }
+# .hero-chip-label {
+#     font-size: 0.6rem;
+#     font-weight: 600;
+#     letter-spacing: 1.5px;
+#     text-transform: uppercase;
+#     color: $text_muted !important;
+#     -webkit-text-fill-color: $text_muted !important;
+#     margin-top: 2px;
+# }
+
+# /* === BUTTONS === */
+# .stButton > button {
+#     background: $accent_grad !important;
+#     color: #fff !important;
+#     -webkit-text-fill-color: #fff !important;
+#     border: none !important;
+#     border-radius: 10px !important;
+#     font-weight: 700 !important;
+#     font-size: 0.8rem !important;
+#     padding: 0.6rem 1.5rem !important;
+#     letter-spacing: 0.5px !important;
+#     text-transform: uppercase !important;
+#     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+#     box-shadow: 0 4px 15px rgba(45, 212, 191, 0.2) !important;
+#     position: relative;
+#     overflow: hidden;
+# }
+# .stButton > button:hover {
+#     background: $accent_grad_hover !important;
+#     transform: translateY(-2px) !important;
+#     box-shadow: 0 8px 25px rgba(45, 212, 191, 0.3) !important;
+# }
+# .stButton > button:active {
+#     transform: translateY(0) !important;
+# }
+
+# /* === FILE UPLOADER === */
+# [data-testid="stFileUploader"] {
+#     border: 2px dashed $border !important;
+#     border-radius: 14px !important;
+#     transition: all 0.3s ease;
+#     background: $glass_bg !important;
+# }
+# [data-testid="stFileUploader"]:hover {
+#     border-color: $accent !important;
+#     box-shadow: $glow;
+# }
+# [data-testid="stFileUploader"] p,
+# [data-testid="stFileUploader"] span,
+# [data-testid="stFileUploader"] div,
+# [data-testid="stFileUploader"] label,
+# [data-testid="stFileUploader"] small,
+# [data-testid="stFileUploadDropzone"] span {
+#     color: $text_main !important;
+#     -webkit-text-fill-color: $text_main !important;
+# }
+# [data-testid="stFileUploadDropzone"] button,
+# [data-testid="stFileUploader"] button[kind="secondary"] {
+#     background: $accent_grad !important;
+#     color: #fff !important;
+#     -webkit-text-fill-color: #fff !important;
+#     border: none !important;
+#     border-radius: 8px !important;
+#     font-weight: 600 !important;
+#     text-transform: uppercase !important;
+#     letter-spacing: 0.5px !important;
+#     font-size: 0.75rem !important;
+# }
+# [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] {
+#     background-color: $bg_card_solid !important;
+#     border: 1px solid $border !important;
+#     border-radius: 10px !important;
+# }
+# [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] span,
+# [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] small {
+#     color: $text_sec !important;
+#     -webkit-text-fill-color: $text_sec !important;
+# }
+# [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] button {
+#     color: $text_muted !important;
+#     -webkit-text-fill-color: $text_muted !important;
+#     background: transparent !important;
+#     border: none !important;
+# }
+# [data-testid="stFileUploadDropzone"] {
+#     background-color: $glass_bg !important;
+#     border-radius: 12px !important;
+# }
+
+# /* === CHAT MESSAGES === */
+# [data-testid="stChatMessage"] {
+#     border-radius: 16px !important;
+#     padding: 1.2rem 1.5rem !important;
+#     margin-bottom: 0.8rem !important;
+#     border: 1px solid $border !important;
+#     backdrop-filter: blur(10px);
+#     -webkit-backdrop-filter: blur(10px);
+#     animation: msgSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+#     position: relative;
+# }
+# @keyframes msgSlideIn {
+#     from { opacity: 0; transform: translateY(12px); }
+#     to { opacity: 1; transform: translateY(0); }
+# }
+# [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+#     background-color: $chat_user !important;
+#     border-left: 3px solid $chat_user_b !important;
+# }
+# [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
+#     background-color: $chat_asst !important;
+#     border-left: 3px solid $chat_asst_b !important;
+# }
+# [data-testid="stChatMessage"] p,
+# [data-testid="stChatMessage"] span,
+# [data-testid="stChatMessage"] li,
+# [data-testid="stChatMessage"] div,
+# [data-testid="stChatMessage"] strong,
+# [data-testid="stChatMessage"] em,
+# [data-testid="stChatMessage"] td,
+# [data-testid="stChatMessage"] th,
+# [data-testid="stChatMessage"] label,
+# [data-testid="stChatMessage"] .stMarkdown,
+# [data-testid="stChatMessage"] .stMarkdown p {
+#     color: $text_main !important;
+#     -webkit-text-fill-color: $text_main !important;
+# }
+
+# /* === CHAT INPUT === */
+# [data-testid="stChatInput"] textarea {
+#     background-color: $bg_input !important;
+#     border: 1.5px solid $input_bdr !important;
+#     border-radius: 14px !important;
+#     color: $text_main !important;
+#     -webkit-text-fill-color: $text_main !important;
+#     font-family: 'Inter', sans-serif !important;
+#     font-size: 0.9rem !important;
+#     transition: all 0.3s ease;
+# }
+# [data-testid="stChatInput"] textarea:focus {
+#     border-color: $accent !important;
+#     box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12) !important;
+# }
+# [data-testid="stChatInput"] textarea::placeholder {
+#     color: $text_muted !important;
+#     -webkit-text-fill-color: $text_muted !important;
+# }
+# [data-testid="stChatInput"] button {
+#     background: $accent_grad !important;
+#     border-radius: 12px !important;
+#     transition: all 0.3s ease;
+# }
+# [data-testid="stChatInput"] button:hover {
+#     box-shadow: 0 4px 15px rgba(45, 212, 191, 0.25) !important;
+# }
+
+# /* === ALERTS === */
+# .stAlert { border-radius: 12px !important; }
+# .stAlert p, .stAlert span, .stAlert div {
+#     color: $text_main !important;
+#     -webkit-text-fill-color: $text_main !important;
+# }
+
+# /* === EXPANDER === */
+# [data-testid="stExpander"] {
+#     border: 1px solid $border !important;
+#     border-radius: 12px !important;
+#     background-color: $glass_bg !important;
+#     backdrop-filter: blur(10px);
+#     -webkit-backdrop-filter: blur(10px);
+#     transition: all 0.3s ease;
+# }
+# [data-testid="stExpander"]:hover {
+#     border-color: $glass_border !important;
+#     box-shadow: $glow;
+# }
+# [data-testid="stExpander"] summary span,
+# [data-testid="stExpander"] summary p {
+#     color: $text_main !important;
+#     -webkit-text-fill-color: $text_main !important;
+# }
+
+# /* === STAT CARDS === */
+# .stats-row {
+#     display: flex;
+#     gap: 0.6rem;
+#     margin: 0.8rem 0;
+# }
+# .stat-box {
+#     flex: 1;
+#     background: $glass_bg;
+#     border: 1px solid $glass_border;
+#     border-radius: 12px;
+#     padding: 0.9rem 0.5rem;
+#     text-align: center;
+#     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+#     backdrop-filter: blur(10px);
+#     -webkit-backdrop-filter: blur(10px);
+# }
+# .stat-box:hover {
+#     border-color: $accent;
+#     box-shadow: $glow;
+#     transform: translateY(-3px);
+# }
+# .stat-num {
+#     font-size: 1.5rem;
+#     font-weight: 800;
+#     color: $accent !important;
+#     -webkit-text-fill-color: $accent !important;
+#     transition: transform 0.3s ease;
+# }
+# .stat-box:hover .stat-num {
+#     transform: scale(1.1);
+# }
+# .stat-lbl {
+#     font-size: 0.6rem;
+#     font-weight: 700;
+#     color: $text_muted !important;
+#     -webkit-text-fill-color: $text_muted !important;
+#     text-transform: uppercase;
+#     letter-spacing: 1.5px;
+#     margin-top: 0.25rem;
+# }
+
+# /* === SOURCE BADGE === */
+# .src-tag {
+#     display: inline-flex;
+#     align-items: center;
+#     gap: 7px;
+#     background: $badge_bg;
+#     border: 1px solid $badge_bdr;
+#     border-radius: 50px;
+#     padding: 4px 14px;
+#     font-size: 0.68rem;
+#     font-weight: 700;
+#     color: $accent !important;
+#     -webkit-text-fill-color: $accent !important;
+#     margin-top: 0.5rem;
+#     letter-spacing: 0.5px;
+#     text-transform: uppercase;
+# }
+# .src-dot {
+#     width: 8px; height: 8px;
+#     border-radius: 50%;
+#     display: inline-block;
+#     position: relative;
+# }
+# .src-dot::after {
+#     content: '';
+#     position: absolute;
+#     top: -2px; left: -2px;
+#     width: 12px; height: 12px;
+#     border-radius: 50%;
+#     background: inherit;
+#     opacity: 0.4;
+#     animation: pulseDot 2s ease-in-out infinite;
+# }
+# @keyframes pulseDot {
+#     0%, 100% { transform: scale(1); opacity: 0.4; }
+#     50% { transform: scale(1.5); opacity: 0; }
+# }
+# .src-dot.csv { background: #818CF8; }
+# .src-dot.pdf { background: #2DD4BF; }
+# .src-dot.chart { background: #F472B6; }
+# .src-dot.general { background: #FBBF24; }
+
+# /* === SIDEBAR CARD === */
+# .sb-card {
+#     background: $glass_bg;
+#     border: 1px solid $glass_border;
+#     border-radius: 14px;
+#     padding: 1.2rem 1.1rem;
+#     margin-bottom: 1rem;
+#     backdrop-filter: blur(12px);
+#     -webkit-backdrop-filter: blur(12px);
+#     transition: all 0.3s ease;
+# }
+# .sb-card:hover {
+#     border-color: $accent;
+#     box-shadow: $glow;
+# }
+# .sb-card h3 {
+#     margin: 0 0 0.4rem 0;
+#     font-size: 0.95rem;
+#     font-weight: 800;
+#     color: $text_main !important;
+#     -webkit-text-fill-color: $text_main !important;
+#     letter-spacing: -0.3px;
+# }
+# .sb-card p {
+#     margin: 0;
+#     font-size: 0.8rem;
+#     color: $text_sec !important;
+#     -webkit-text-fill-color: $text_sec !important;
+#     line-height: 1.5;
+# }
+
+# /* === STATUS INDICATOR === */
+# .status-online {
+#     display: inline-flex;
+#     align-items: center;
+#     gap: 6px;
+#     font-size: 0.72rem;
+#     font-weight: 700;
+#     color: $success !important;
+#     -webkit-text-fill-color: $success !important;
+#     letter-spacing: 0.5px;
+# }
+# .status-dot {
+#     width: 6px; height: 6px;
+#     background: $success;
+#     border-radius: 50%;
+#     display: inline-block;
+#     animation: statusPulse 2s ease-in-out infinite;
+# }
+# @keyframes statusPulse {
+#     0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+#     50% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+# }
+
+# /* === DIVIDER === */
+# hr {
+#     border: none !important;
+#     height: 1px !important;
+#     background: $border !important;
+# }
+
+# /* === DATAFRAME === */
+# [data-testid="stDataFrame"] {
+#     border-radius: 12px !important;
+#     overflow: hidden;
+#     border: 1px solid $border !important;
+# }
+
+# /* === BLOCKQUOTE === */
+# blockquote {
+#     border-left: 3px solid $accent !important;
+#     background: $glass_bg !important;
+#     padding: 0.9rem 1.1rem !important;
+#     border-radius: 0 10px 10px 0 !important;
+#     backdrop-filter: blur(8px);
+#     -webkit-backdrop-filter: blur(8px);
+# }
+# blockquote p {
+#     color: $text_sec !important;
+#     -webkit-text-fill-color: $text_sec !important;
+# }
+
+# /* === TOGGLE === */
+# .theme-row {
+#     display: flex;
+#     align-items: center;
+#     justify-content: center;
+#     gap: 8px;
+#     padding: 0.3rem 0;
+# }
+# .theme-icon {
+#     font-size: 1.1rem;
+# }
+
+# /* === SPINNER === */
+# .stSpinner > div {
+#     border-top-color: $accent !important;
+# }
+
+# /* === POWERED BY FOOTER === */
+# .powered-by {
+#     font-size: 0.7rem;
+#     font-weight: 500;
+#     color: $text_muted !important;
+#     -webkit-text-fill-color: $text_muted !important;
+#     letter-spacing: 0.5px;
+#     text-align: center;
+# }
+# .powered-by span {
+#     color: $text_muted !important;
+#     -webkit-text-fill-color: $text_muted !important;
+# }
+# </style>
+# """)
+
+# # Inject themed CSS
+# t = DARK_THEME if is_dark else LIGHT_THEME
+# st.markdown(CSS_TEMPLATE.substitute(t), unsafe_allow_html=True)
+
+
+# # ══════════════════════════════════════════════════════
+# # SESSION STATE
+# # ══════════════════════════════════════════════════════
+
+# if "messages" not in st.session_state:
+#     st.session_state.messages = []
+# if "df" not in st.session_state:
+#     st.session_state.df = None
+# if "vectorstore" not in st.session_state:
+#     st.session_state.vectorstore = None
+# if "chart_counter" not in st.session_state:
+#     st.session_state.chart_counter = 0
+# if "pdf_name" not in st.session_state:
+#     st.session_state.pdf_name = None
+# if "csv_name" not in st.session_state:
+#     st.session_state.csv_name = None
+
+
+# # ══════════════════════════════════════════════════════
+# # SIDEBAR
+# # ══════════════════════════════════════════════════════
+
+# with st.sidebar:
+#     # ── Theme Toggle ────────────────────────────
+#     t_col1, t_col2, t_col3 = st.columns([1, 2, 1])
+#     with t_col1:
+#         st.markdown('<div class="theme-icon">☀️</div>', unsafe_allow_html=True)
+#     with t_col2:
+#         theme_toggle = st.toggle("Dark Mode", value=is_dark, key="theme_toggle")
+#         if theme_toggle != is_dark:
+#             st.session_state.theme = "dark" if theme_toggle else "light"
+#             st.rerun()
+#     with t_col3:
+#         st.markdown('<div class="theme-icon">🌙</div>', unsafe_allow_html=True)
+
+#     st.divider()
+
+#     # ── Header Card ─────────────────────────────
+#     st.markdown(
+#         '<div class="sb-card">'
+#         '<h3>📁 Data Sources</h3>'
+#         '<p>Upload CSV or PDF files to unlock AI-powered insights</p>'
+#         '</div>',
+#         unsafe_allow_html=True,
+#     )
+
+#     # ── CSV Upload ──────────────────────────────
+#     st.markdown(
+#         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:0.3rem;">'
+#         '<span style="font-size:0.85rem;font-weight:700;">📄 CSV Data</span>'
+#         '</div>',
+#         unsafe_allow_html=True,
+#     )
+#     csv_file = st.file_uploader(
+#         "Upload a CSV file for data analysis & charts",
+#         type=["csv"],
+#         key="csv_uploader",
+#         help="Max size: %d MB" % config.max_csv_size_mb,
+#     )
+
+#     if csv_file is not None:
+#         try:
+#             file_bytes = csv_file.getvalue()
+#             validate_file_size(file_bytes, config.max_csv_size_mb, csv_file.name)
+#             csv_file.seek(0)
+#             st.session_state.df = validate_csv(csv_file)
+#             st.session_state.csv_name = csv_file.name
+
+#             df = st.session_state.df
+#             num_cols = len(df.select_dtypes(include="number").columns)
+#             st.markdown(
+#                 '<div class="stats-row">'
+#                 '<div class="stat-box"><div class="stat-num">%s</div>'
+#                 '<div class="stat-lbl">Rows</div></div>'
+#                 '<div class="stat-box"><div class="stat-num">%d</div>'
+#                 '<div class="stat-lbl">Columns</div></div>'
+#                 '<div class="stat-box"><div class="stat-num">%d</div>'
+#                 '<div class="stat-lbl">Numeric</div></div>'
+#                 '</div>' % ("{:,}".format(df.shape[0]), df.shape[1], num_cols),
+#                 unsafe_allow_html=True,
+#             )
+
+#             with st.expander("🔍 Preview Data", expanded=False):
+#                 st.dataframe(df.head(10), use_container_width=True)
+
+#         except FileValidationError as e:
+#             st.error("❌ %s" % e)
+#             st.session_state.df = None
+
+#     # ── PDF Upload ──────────────────────────────
+#     st.markdown(
+#         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:0.3rem;margin-top:0.5rem;">'
+#         '<span style="font-size:0.85rem;font-weight:700;">📑 PDF Document</span>'
+#         '</div>',
+#         unsafe_allow_html=True,
+#     )
+#     pdf_file = st.file_uploader(
+#         "Upload any PDF to search & ask questions",
+#         type=["pdf"],
+#         key="pdf_uploader",
+#         help="Max size: %d MB. Works with any PDF." % config.max_pdf_size_mb,
+#     )
+
+#     if pdf_file is not None:
+#         if st.session_state.pdf_name != pdf_file.name:
+#             st.session_state.vectorstore = None
+#             st.session_state.pdf_name = pdf_file.name
+
+#         if st.session_state.vectorstore is None:
+#             try:
+#                 file_bytes = pdf_file.getvalue()
+#                 validate_file_size(file_bytes, config.max_pdf_size_mb, pdf_file.name)
+#                 with st.spinner("🔄 Processing PDF... (first time may take 1-2 min)"):
+#                     st.session_state.vectorstore = process_pdf(file_bytes, config)
+#                 st.markdown(
+#                     '<div class="status-online"><span class="status-dot"></span> '
+#                     '<span>%s indexed & ready</span></div>' % pdf_file.name,
+#                     unsafe_allow_html=True,
+#                 )
+#             except (FileValidationError, RAGProcessingError) as e:
+#                 st.error("❌ %s" % e)
+#                 st.session_state.vectorstore = None
+#         else:
+#             st.markdown(
+#                 '<div class="status-online"><span class="status-dot"></span> '
+#                 '<span>%s — ready to query</span></div>' % pdf_file.name,
+#                 unsafe_allow_html=True,
+#             )
+
+#     # ── Status ──────────────────────────────────
+#     st.divider()
+
+#     if st.session_state.df is None and st.session_state.vectorstore is None:
+#         st.markdown(
+#             "> 👋 **Getting Started**\n>\n"
+#             "> Upload a **CSV** for data analysis & charts, "
+#             "or a **PDF** to search its content.\n>\n"
+#             "> Or just type a question below for general AI insights!"
+#         )
+
+#     # ── Controls ────────────────────────────────
+#     col1, col2 = st.columns(2)
+#     with col1:
+#         if st.button("🗑️ Clear Chat", use_container_width=True):
+#             st.session_state.messages = []
+#             st.session_state.chart_counter = 0
+#             st.rerun()
+#     with col2:
+#         if st.button("🔄 Reset All", use_container_width=True):
+#             for key in ["messages", "df", "vectorstore", "chart_counter", "pdf_name", "csv_name"]:
+#                 if key in st.session_state:
+#                     del st.session_state[key]
+#             st.rerun()
+
+#     st.divider()
+#     st.markdown(
+#         '<div class="powered-by"><span>Powered by Groq · LangChain · FAISS</span></div>',
+#         unsafe_allow_html=True,
+#     )
+
+
+# # ══════════════════════════════════════════════════════
+# # HERO HEADER
+# # ══════════════════════════════════════════════════════
+
+# st.markdown(
+#     '<div class="hero-wrap">'
+#     '<div class="hero-label">'
+#     '<span class="hero-label-dash"></span> AI-Powered Analysis'
+#     '</div><br>'
+#     '<h1 class="hero-heading">'
+#     'Insights that<br><span class="hero-accent">drive decisions.</span>'
+#     '</h1>'
+#     '<p class="hero-sub">'
+#     'Upload your data, ask questions in plain English, and get instant insights, '
+#     'interactive charts, and answers — all powered by advanced AI.'
+#     '</p>'
+#     '<div class="hero-chips">'
+#     '<div class="hero-chip-item"><div class="hero-chip-value">&lt;10s</div>'
+#     '<div class="hero-chip-label">Response Time</div></div>'
+#     '<div class="hero-chip-item"><div class="hero-chip-value">CSV + PDF</div>'
+#     '<div class="hero-chip-label">Data Sources</div></div>'
+#     '<div class="hero-chip-item"><div class="hero-chip-value">Free</div>'
+#     '<div class="hero-chip-label">Open Source</div></div>'
+#     '</div>'
+#     '</div>',
+#     unsafe_allow_html=True,
+# )
+
+
+# # ══════════════════════════════════════════════════════
+# # CHAT INTERFACE
+# # ══════════════════════════════════════════════════════
+
+# def _source_badge(route):
+#     """Return an HTML source badge for the message."""
+#     labels = {
+#         Route.CSV: ("CSV Analysis", "csv"),
+#         Route.PDF: ("PDF Search", "pdf"),
+#         Route.CHART: ("Chart", "chart"),
+#         Route.GENERAL: ("General AI", "general"),
+#     }
+#     label, css_class = labels.get(route, ("AI", "general"))
+#     return '<div class="src-tag"><span class="src-dot %s"></span>%s</div>' % (css_class, label)
+
+
+# # Chart template matching theme
+# _chart_template = "plotly_dark" if is_dark else "plotly_white"
+
+# # Display past messages
+# for idx, message in enumerate(st.session_state.messages):
+#     with st.chat_message(message["role"]):
+#         if message.get("chart") is not None:
+#             st.plotly_chart(message["chart"], use_container_width=True, key="history_chart_%d" % idx)
+#         if message.get("content"):
+#             st.markdown(message["content"])
+#         if message.get("badge"):
+#             st.markdown(message["badge"], unsafe_allow_html=True)
+
+
+# # Chat input
+# if prompt := st.chat_input("Ask anything about your data..."):
+#     prompt = sanitize_user_input(prompt)
+
+#     if not prompt:
+#         st.warning("Please enter a question.")
+#         st.stop()
+
+#     st.session_state.messages.append(
+#         {"role": "user", "content": prompt, "chart": None, "badge": None}
+#     )
+#     with st.chat_message("user"):
+#         st.markdown(prompt)
+
+#     with st.chat_message("assistant"):
+#         with st.spinner("✨ Analyzing..."):
+#             route = route_question(
+#                 llm,
+#                 prompt,
+#                 has_csv=st.session_state.df is not None,
+#                 has_pdf=st.session_state.vectorstore is not None,
+#             )
+#             badge_html = _source_badge(route)
+
+#             try:
+#                 if route == Route.CHART:
+#                     df = st.session_state.df
+#                     x_col, y_col = detect_columns(prompt, df)
+#                     chart_type = detect_chart_type(prompt)
+#                     fig = generate_chart(chart_type, x_col, y_col, df)
+#                     fig.update_layout(template=_chart_template)
+
+#                     st.session_state.chart_counter += 1
+#                     chart_key = "new_chart_%d" % st.session_state.chart_counter
+#                     st.plotly_chart(fig, use_container_width=True, key=chart_key)
+
+#                     caption = "📊 %s chart — **%s** by **%s**" % (chart_type.title(), y_col, x_col)
+#                     st.markdown(caption)
+#                     st.markdown(badge_html, unsafe_allow_html=True)
+
+#                     st.session_state.messages.append(
+#                         {"role": "assistant", "content": caption, "chart": fig, "badge": badge_html}
+#                     )
+
+#                 elif route == Route.CSV:
+#                     answer = analyze_csv(prompt, st.session_state.df, llm)
+#                     st.markdown(answer)
+#                     st.markdown(badge_html, unsafe_allow_html=True)
+#                     st.session_state.messages.append(
+#                         {"role": "assistant", "content": answer, "chart": None, "badge": badge_html}
+#                     )
+
+#                 elif route == Route.PDF:
+#                     answer = query_pdf(
+#                         prompt, st.session_state.vectorstore, llm, config.retriever_top_k,
+#                     )
+#                     st.markdown(answer)
+#                     st.markdown(badge_html, unsafe_allow_html=True)
+#                     st.session_state.messages.append(
+#                         {"role": "assistant", "content": answer, "chart": None, "badge": badge_html}
+#                     )
+
+#                 else:
+#                     answer = chat_with_history(llm, prompt, st.session_state.messages)
+#                     st.markdown(answer)
+#                     st.markdown(badge_html, unsafe_allow_html=True)
+#                     st.session_state.messages.append(
+#                         {"role": "assistant", "content": answer, "chart": None, "badge": badge_html}
+#                     )
+
+#             except Exception as e:
+#                 logger.error("Error handling question: %s", e, exc_info=True)
+#                 error_msg = (
+#                     "⚠️ **Something went wrong**\n\n%s\n\n"
+#                     "💡 *Try rephrasing your question or check your internet connection.*"
+#                 ) % str(e)
+#                 st.error(error_msg)
+#                 st.session_state.messages.append(
+#                     {"role": "assistant", "content": error_msg, "chart": None, "badge": None}
+#                 )
+
 """
 AI Financial Analyst Agent — Main Streamlit Application.
 
@@ -23,6 +1018,15 @@ from src.csv_agent import analyze_csv
 from src.pdf_rag import process_pdf, query_pdf
 from src.charts import detect_chart_type, detect_columns, generate_chart
 from src.router import Route, route_question
+from src.supabase_client import (
+    init_supabase,
+    signup_user,
+    login_user,
+    logout_user,
+    save_message,
+    load_chat_history,
+    clear_chat_history,
+)
 from src.utils import (
     format_dataframe_info,
     sanitize_user_input,
@@ -30,19 +1034,12 @@ from src.utils import (
     validate_file_size,
 )
 
-# ══════════════════════════════════════════════════════
-# PAGE CONFIG
-# ══════════════════════════════════════════════════════
 st.set_page_config(
     page_title="AI Financial Analyst Agent",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# ══════════════════════════════════════════════════════
-# INITIALIZATION (before CSS to avoid tokenizer issues)
-# ══════════════════════════════════════════════════════
 
 try:
     config = load_config()
@@ -65,444 +1062,739 @@ except Exception as e:
     st.error(f"🔌 **Could not connect to AI model**\n\n{e}")
     st.stop()
 
-# ══════════════════════════════════════════════════════
-# THEME STATE
-# ══════════════════════════════════════════════════════
+# Initialize Supabase client
+supabase = init_supabase(config)
+
+
 if "theme" not in st.session_state:
-    st.session_state.theme = "dark"
+    st.session_state.theme = "light"
 
 is_dark = st.session_state.theme == "dark"
 
-# ══════════════════════════════════════════════════════
-# THEME DEFINITIONS
-# ══════════════════════════════════════════════════════
+
 DARK_THEME = {
-    "bg_main": "#0B0F19",
-    "bg_sidebar": "#111827",
-    "bg_card": "#1E293B",
-    "bg_input": "#1E293B",
-    "border": "#334155",
-    "text_main": "#F8FAFC",
-    "text_sec": "#CBD5E1",
-    "text_muted": "#94A3B8",
-    "accent": "#818CF8",
-    "accent_grad": "linear-gradient(135deg, #6366F1, #8B5CF6)",
-    "success": "#4ADE80",
-    "chat_user": "#1E293B",
-    "chat_asst": "#1A2332",
-    "chat_user_b": "#6366F1",
-    "chat_asst_b": "#4ADE80",
-    "input_bdr": "#475569",
-    "badge_bg": "rgba(99,102,241,0.15)",
-    "badge_bdr": "rgba(99,102,241,0.3)",
-    "hero_title": "#E0E7FF",
-    "code_color": "#C4B5FD",
-    "shadow": "0 4px 24px rgba(0,0,0,0.4)",
+    "page": "#080A0F",
+    "sidebar": "#0D111A",
+    "surface": "#111827",
+    "surface_2": "#151D2B",
+    "surface_3": "#1B2433",
+    "border": "rgba(148, 163, 184, 0.16)",
+    "border_strong": "rgba(148, 163, 184, 0.28)",
+    "text": "#F3F4F6",
+    "text_2": "#B6C0D1",
+    "muted": "#7C879A",
+    "accent": "#14B8A6",
+    "accent_2": "#2563EB",
+    "accent_3": "#F59E0B",
+    "success": "#22C55E",
+    "danger": "#F43F5E",
+    "soft": "rgba(20, 184, 166, 0.12)",
+    "soft_2": "rgba(37, 99, 235, 0.12)",
+    "shadow": "0 18px 50px rgba(0, 0, 0, 0.28)",
+    "input": "#0F172A",
+    "code": "#67E8F9",
+    "gradient": "linear-gradient(135deg, #14B8A6 0%, #2563EB 100%)",
 }
 
 LIGHT_THEME = {
-    "bg_main": "#F8FAFC",
-    "bg_sidebar": "#FFFFFF",
-    "bg_card": "#FFFFFF",
-    "bg_input": "#FFFFFF",
-    "border": "#E2E8F0",
-    "text_main": "#0F172A",
-    "text_sec": "#475569",
-    "text_muted": "#94A3B8",
-    "accent": "#6366F1",
-    "accent_grad": "linear-gradient(135deg, #6366F1, #8B5CF6)",
+    "page": "#F4F7FB",
+    "sidebar": "#FFFFFF",
+    "surface": "#FFFFFF",
+    "surface_2": "#F8FAFC",
+    "surface_3": "#EEF3F9",
+    "border": "rgba(15, 23, 42, 0.10)",
+    "border_strong": "rgba(15, 23, 42, 0.16)",
+    "text": "#111827",
+    "text_2": "#4B5563",
+    "muted": "#8792A5",
+    "accent": "#0F766E",
+    "accent_2": "#2563EB",
+    "accent_3": "#B45309",
     "success": "#16A34A",
-    "chat_user": "#F1F5F9",
-    "chat_asst": "#FFFFFF",
-    "chat_user_b": "#6366F1",
-    "chat_asst_b": "#16A34A",
-    "input_bdr": "#CBD5E1",
-    "badge_bg": "rgba(99,102,241,0.08)",
-    "badge_bdr": "rgba(99,102,241,0.2)",
-    "hero_title": "#1E1B4B",
-    "code_color": "#7C3AED",
-    "shadow": "0 4px 24px rgba(0,0,0,0.08)",
+    "danger": "#E11D48",
+    "soft": "rgba(15, 118, 110, 0.10)",
+    "soft_2": "rgba(37, 99, 235, 0.08)",
+    "shadow": "0 18px 44px rgba(15, 23, 42, 0.08)",
+    "input": "#FFFFFF",
+    "code": "#0F766E",
+    "gradient": "linear-gradient(135deg, #0F766E 0%, #2563EB 100%)",
 }
 
-# ══════════════════════════════════════════════════════
-# CSS TEMPLATE (uses string.Template with $ — safe with CSS)
-# ══════════════════════════════════════════════════════
+
 CSS_TEMPLATE = Template("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
-/* === GLOBAL === */
-html, body, .stApp, [data-testid="stAppViewContainer"],
-[data-testid="stAppViewBlockContainer"] {
+:root {
+    --page: $page;
+    --sidebar: $sidebar;
+    --surface: $surface;
+    --surface-2: $surface_2;
+    --surface-3: $surface_3;
+    --border: $border;
+    --border-strong: $border_strong;
+    --text: $text;
+    --text-2: $text_2;
+    --muted: $muted;
+    --accent: $accent;
+    --accent-2: $accent_2;
+    --accent-3: $accent_3;
+    --success: $success;
+    --danger: $danger;
+    --soft: $soft;
+    --soft-2: $soft_2;
+    --shadow: $shadow;
+    --input: $input;
+    --code: $code;
+    --gradient: $gradient;
+}
+
+html, body, .stApp {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-    background-color: $bg_main !important;
+    background: var(--page) !important;
+    color: var(--text) !important;
 }
-.stApp { background-color: $bg_main !important; }
 
-/* Force text colors on every element */
-.stApp, .stApp p, .stApp span, .stApp div, .stApp label,
+[data-testid="stAppViewContainer"] {
+    background: var(--page) !important;
+}
+
+[data-testid="stAppViewBlockContainer"] {
+    max-width: 1240px !important;
+    padding: 1.25rem 2rem 7rem !important;
+}
+
+#MainMenu, footer, header {
+    visibility: hidden;
+}
+
+.stApp p, .stApp span, .stApp div, .stApp label,
 .stApp li, .stApp td, .stApp th, .stApp h1, .stApp h2,
-.stApp h3, .stApp h4, .stApp h5, .stApp h6,
-.stApp .stMarkdown, .stApp .stMarkdown p,
-.stApp .stMarkdown span, .stApp .stMarkdown li,
-.stApp .stMarkdown strong, .stApp .stMarkdown em,
-.stApp figcaption, .stApp caption {
-    color: $text_main !important;
-    -webkit-text-fill-color: $text_main !important;
-}
-.stApp a { color: $accent !important; -webkit-text-fill-color: $accent !important; }
-.stApp code { color: $code_color !important; -webkit-text-fill-color: $code_color !important; }
-.stCaption, .stCaption span {
-    color: $text_muted !important;
-    -webkit-text-fill-color: $text_muted !important;
+.stApp h3, .stApp h4, .stApp h5, .stApp h6 {
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    letter-spacing: 0 !important;
 }
 
-/* === HIDE DEFAULTS === */
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-header { visibility: hidden; }
+.stApp a {
+    color: var(--accent) !important;
+}
 
-/* === SCROLLBAR === */
-::-webkit-scrollbar { width: 7px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: $accent; border-radius: 4px; }
+.stApp code {
+    color: var(--code) !important;
+    background: var(--soft) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    padding: 0.12rem 0.35rem !important;
+}
 
-/* === SIDEBAR === */
 section[data-testid="stSidebar"] {
-    background-color: $bg_sidebar !important;
-    border-right: 1px solid $border !important;
-}
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] div,
-section[data-testid="stSidebar"] li,
-section[data-testid="stSidebar"] small,
-section[data-testid="stSidebar"] .stMarkdown p,
-section[data-testid="stSidebar"] h1,
-section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3,
-section[data-testid="stSidebar"] h4,
-section[data-testid="stSidebar"] h5 {
-    color: $text_main !important;
-    -webkit-text-fill-color: $text_main !important;
+    background: var(--sidebar) !important;
+    border-right: 1px solid var(--border) !important;
+    box-shadow: 12px 0 40px rgba(15, 23, 42, 0.05) !important;
 }
 
-/* === HERO === */
-.hero-wrap {
-    text-align: center;
-    padding: 2.5rem 1rem 1.5rem;
-}
-.hero-chip {
-    display: inline-block;
-    background: $accent_grad;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 2.5px;
-    text-transform: uppercase;
-    padding: 6px 18px;
-    border-radius: 50px;
-    margin-bottom: 1rem;
-}
-.hero-heading {
-    font-size: 2.5rem;
-    font-weight: 800;
-    color: $hero_title !important;
-    -webkit-text-fill-color: $hero_title !important;
-    margin: 0 0 0.6rem 0;
-    line-height: 1.15;
-}
-.hero-sub {
-    font-size: 1.05rem;
-    color: $text_sec !important;
-    -webkit-text-fill-color: $text_sec !important;
-    max-width: 620px;
-    margin: 0 auto;
-    line-height: 1.7;
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    padding: 1.1rem 1rem !important;
 }
 
-/* === BUTTONS === */
-.stButton > button {
-    background: $accent_grad !important;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-weight: 600 !important;
-    font-size: 0.85rem !important;
-    padding: 0.55rem 1.4rem !important;
-    transition: all 0.2s ease !important;
-    box-shadow: 0 2px 8px rgba(99,102,241,0.25) !important;
-}
-.stButton > button:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 6px 20px rgba(99,102,241,0.35) !important;
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
 }
 
-/* === FILE UPLOADER === */
-[data-testid="stFileUploader"] {
-    border: 2px dashed $border !important;
-    border-radius: 12px !important;
-    transition: border-color 0.2s ease;
-}
-[data-testid="stFileUploader"]:hover {
-    border-color: $accent !important;
-}
-/* Uploader inner text, labels, file names */
-[data-testid="stFileUploader"] p,
-[data-testid="stFileUploader"] span,
-[data-testid="stFileUploader"] div,
-[data-testid="stFileUploader"] label,
-[data-testid="stFileUploader"] small,
-[data-testid="stFileUploadDropzone"] span {
-    color: $text_main !important;
-    -webkit-text-fill-color: $text_main !important;
-}
-/* Browse files button */
-[data-testid="stFileUploadDropzone"] button,
-[data-testid="stFileUploader"] button[kind="secondary"] {
-    background-color: $bg_card !important;
-    color: $text_main !important;
-    -webkit-text-fill-color: $text_main !important;
-    border: 1px solid $border !important;
-    border-radius: 8px !important;
-}
-/* Uploaded file info row */
-[data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] {
-    background-color: $bg_card !important;
-    border: 1px solid $border !important;
-    border-radius: 8px !important;
-}
-[data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] span,
-[data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] small {
-    color: $text_sec !important;
-    -webkit-text-fill-color: $text_sec !important;
-}
-/* Delete button on uploaded file */
-[data-testid="stFileUploader"] [data-testid="stFileUploaderFile"] button {
-    color: $text_muted !important;
-    -webkit-text-fill-color: $text_muted !important;
-    background: transparent !important;
-    border: none !important;
-}
-/* Drag-drop zone */
-[data-testid="stFileUploadDropzone"] {
-    background-color: $bg_card !important;
-    border-radius: 10px !important;
+::-webkit-scrollbar-thumb {
+    background: var(--surface-3);
+    border-radius: 999px;
 }
 
-/* === CHAT MESSAGES === */
-[data-testid="stChatMessage"] {
-    border-radius: 14px !important;
-    padding: 1rem 1.3rem !important;
-    margin-bottom: 0.75rem !important;
-    border: 1px solid $border !important;
-    animation: msgIn 0.35s ease-out;
-}
-@keyframes msgIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
-    background-color: $chat_user !important;
-    border-left: 3px solid $chat_user_b !important;
-}
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
-    background-color: $chat_asst !important;
-    border-left: 3px solid $chat_asst_b !important;
-}
-[data-testid="stChatMessage"] p,
-[data-testid="stChatMessage"] span,
-[data-testid="stChatMessage"] li,
-[data-testid="stChatMessage"] div,
-[data-testid="stChatMessage"] strong,
-[data-testid="stChatMessage"] em,
-[data-testid="stChatMessage"] td,
-[data-testid="stChatMessage"] th,
-[data-testid="stChatMessage"] label,
-[data-testid="stChatMessage"] .stMarkdown,
-[data-testid="stChatMessage"] .stMarkdown p {
-    color: $text_main !important;
-    -webkit-text-fill-color: $text_main !important;
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
 }
 
-/* === CHAT INPUT === */
-[data-testid="stChatInput"] textarea {
-    background-color: $bg_input !important;
-    border: 1.5px solid $input_bdr !important;
-    border-radius: 12px !important;
-    color: $text_main !important;
-    -webkit-text-fill-color: $text_main !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 0.9rem !important;
-}
-[data-testid="stChatInput"] textarea:focus {
-    border-color: $accent !important;
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.2) !important;
-}
-[data-testid="stChatInput"] textarea::placeholder {
-    color: $text_muted !important;
-    -webkit-text-fill-color: $text_muted !important;
-}
-[data-testid="stChatInput"] button {
-    background: $accent_grad !important;
-    border-radius: 10px !important;
-}
-
-/* === ALERTS === */
-.stAlert { border-radius: 10px !important; }
-.stAlert p, .stAlert span, .stAlert div {
-    color: $text_main !important;
-    -webkit-text-fill-color: $text_main !important;
-}
-
-/* === EXPANDER === */
-[data-testid="stExpander"] {
-    border: 1px solid $border !important;
-    border-radius: 10px !important;
-    background-color: $bg_card !important;
-}
-[data-testid="stExpander"] summary span,
-[data-testid="stExpander"] summary p {
-    color: $text_main !important;
-    -webkit-text-fill-color: $text_main !important;
-}
-
-/* === STAT CARDS === */
-.stats-row {
+.app-brand {
     display: flex;
-    gap: 0.6rem;
-    margin: 0.8rem 0;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.35rem 0.15rem 1rem;
 }
-.stat-box {
-    flex: 1;
-    background: $bg_card;
-    border: 1px solid $border;
+
+.brand-mark {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
     border-radius: 10px;
-    padding: 0.8rem 0.5rem;
-    text-align: center;
-    transition: all 0.2s ease;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    background: var(--gradient);
+    font-weight: 900;
+    box-shadow: 0 12px 28px rgba(37, 99, 235, 0.18);
 }
-.stat-box:hover {
-    border-color: $accent;
-    box-shadow: $shadow;
-    transform: translateY(-1px);
+
+.brand-title {
+    font-weight: 850;
+    font-size: 0.98rem;
+    line-height: 1.1;
 }
-.stat-num {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: $accent !important;
-    -webkit-text-fill-color: $accent !important;
-}
-.stat-lbl {
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: $text_muted !important;
-    -webkit-text-fill-color: $text_muted !important;
-    text-transform: uppercase;
-    letter-spacing: 1.2px;
+
+.brand-subtitle {
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+    font-size: 0.74rem;
     margin-top: 0.2rem;
 }
 
-/* === SOURCE BADGE === */
+.sidebar-panel {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    padding: 1rem;
+    margin: 0.85rem 0;
+}
+
+.sidebar-panel h3 {
+    margin: 0 0 0.35rem;
+    font-size: 0.92rem;
+    font-weight: 800;
+}
+
+.sidebar-panel p {
+    margin: 0;
+    color: var(--text-2) !important;
+    -webkit-text-fill-color: var(--text-2) !important;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.theme-row {
+    display: grid;
+    grid-template-columns: 34px 1fr 34px;
+    gap: 0.7rem;
+    align-items: center;
+    padding: 0.8rem 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+.theme-icon {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+}
+
+.upload-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1rem 0 0.45rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.upload-label span:last-child {
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+    font-size: 0.68rem;
+    font-weight: 700;
+}
+
+[data-testid="stFileUploader"] {
+    background: var(--surface) !important;
+    border: 1px dashed var(--border-strong) !important;
+    border-radius: 10px !important;
+    padding: 0.35rem !important;
+}
+
+[data-testid="stFileUploader"]:hover {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--soft);
+}
+
+[data-testid="stFileUploaderDropzone"],
+[data-testid="stFileUploadDropzone"] {
+    background: var(--surface-2) !important;
+    border: 0 !important;
+    border-radius: 9px !important;
+    min-height: 5.5rem !important;
+}
+
+[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploadDropzone"] button,
+[data-testid="stFileUploader"] button[kind="secondary"] {
+    background: var(--surface) !important;
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    font-weight: 800 !important;
+}
+
+[data-testid="stFileUploaderFile"] {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+}
+
+.stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.45rem;
+    margin: 0.8rem 0;
+}
+
+.stat-box {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 0.75rem 0.55rem;
+}
+
+.stat-num {
+    font-weight: 900;
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
+    font-size: 1.05rem;
+}
+
+.stat-lbl {
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+    font-size: 0.66rem;
+    font-weight: 750;
+    margin-top: 0.18rem;
+}
+
+.empty-state {
+    background: var(--soft);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.85rem;
+    margin-top: 0.8rem;
+}
+
+.empty-title {
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
+    font-weight: 850;
+    font-size: 0.82rem;
+    margin-bottom: 0.25rem;
+}
+
+.empty-state p {
+    margin: 0;
+    color: var(--text-2) !important;
+    -webkit-text-fill-color: var(--text-2) !important;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.shell-topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.page-kicker {
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
+    font-size: 0.73rem;
+    font-weight: 850;
+    margin-bottom: 0.25rem;
+}
+
+.page-title {
+    margin: 0;
+    font-size: 1.85rem;
+    line-height: 1.12;
+    font-weight: 900;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+}
+
+.page-subtitle {
+    color: var(--text-2) !important;
+    -webkit-text-fill-color: var(--text-2) !important;
+    font-size: 0.92rem;
+    margin-top: 0.35rem;
+    max-width: 680px;
+    line-height: 1.5;
+}
+
+.live-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.48rem 0.7rem;
+    box-shadow: var(--shadow);
+    font-size: 0.76rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--success);
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
+.source-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+    margin-bottom: 1.1rem;
+}
+
+.source-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: var(--shadow);
+}
+
+.source-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.65rem;
+}
+
+.source-icon {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: var(--soft);
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
+    font-weight: 900;
+}
+
+.source-status {
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+    font-size: 0.7rem;
+    font-weight: 800;
+}
+
+.source-card h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 850;
+}
+
+.source-card p {
+    margin: 0.3rem 0 0;
+    color: var(--text-2) !important;
+    -webkit-text-fill-color: var(--text-2) !important;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.chat-frame {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.chat-frame-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.8rem;
+    margin-bottom: 0.95rem;
+}
+
+.chat-title {
+    font-weight: 850;
+    font-size: 0.98rem;
+}
+
+.chat-meta {
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+    font-size: 0.76rem;
+    font-weight: 750;
+}
+
+[data-testid="stChatMessage"] {
+    background: var(--surface-2) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    padding: 1rem 1.1rem !important;
+    margin-bottom: 0.75rem !important;
+}
+
+[data-testid="stChatMessage"] p {
+    font-size: 0.96rem !important;
+    line-height: 1.65 !important;
+}
+
+[data-testid="chatAvatarIcon-user"],
+[data-testid="chatAvatarIcon-assistant"] {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+}
+
 .src-tag {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    background: $badge_bg;
-    border: 1px solid $badge_bdr;
-    border-radius: 50px;
-    padding: 3px 12px;
+    gap: 0.45rem;
+    background: var(--soft);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.35rem 0.65rem;
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
     font-size: 0.7rem;
-    font-weight: 600;
-    color: $accent !important;
-    -webkit-text-fill-color: $accent !important;
-    margin-top: 0.4rem;
+    font-weight: 850;
+    margin-top: 0.5rem;
 }
+
 .src-dot {
-    width: 7px; height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     display: inline-block;
 }
-.src-dot.csv { background: #6366F1; }
-.src-dot.pdf { background: #22C55E; }
-.src-dot.chart { background: #EC4899; }
-.src-dot.general { background: #F59E0B; }
 
-/* === SIDEBAR CARD === */
-.sb-card {
-    background: $bg_card;
-    border: 1px solid $border;
-    border-radius: 12px;
-    padding: 1.1rem 1rem;
-    margin-bottom: 1rem;
-}
-.sb-card h3 {
-    margin: 0 0 0.3rem 0;
-    font-size: 1rem;
-    font-weight: 700;
-    color: $text_main !important;
-    -webkit-text-fill-color: $text_main !important;
-}
-.sb-card p {
-    margin: 0;
-    font-size: 0.82rem;
-    color: $text_sec !important;
-    -webkit-text-fill-color: $text_sec !important;
-}
+.src-dot.csv { background: var(--accent-2); }
+.src-dot.pdf { background: var(--accent); }
+.src-dot.chart { background: var(--danger); }
+.src-dot.general { background: var(--accent-3); }
 
-/* === DIVIDER === */
-hr {
-    border: none !important;
-    height: 1px !important;
-    background: $border !important;
-}
-
-/* === DATAFRAME === */
-[data-testid="stDataFrame"] {
-    border-radius: 10px !important;
-    overflow: hidden;
-}
-
-/* === BLOCKQUOTE === */
-blockquote {
-    border-left: 3px solid $accent !important;
-    background: $bg_card !important;
-    padding: 0.8rem 1rem !important;
-    border-radius: 0 8px 8px 0 !important;
-}
-blockquote p {
-    color: $text_sec !important;
-    -webkit-text-fill-color: $text_sec !important;
-}
-
-/* === TOGGLE === */
-.theme-row {
-    display: flex;
+.status-online {
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 0.3rem 0;
+    gap: 0.45rem;
+    background: rgba(34, 197, 94, 0.10);
+    border: 1px solid rgba(34, 197, 94, 0.22);
+    border-radius: 999px;
+    padding: 0.35rem 0.6rem;
+    color: var(--success) !important;
+    -webkit-text-fill-color: var(--success) !important;
+    font-size: 0.72rem;
+    font-weight: 850;
+    margin-top: 0.55rem;
 }
-.theme-icon {
-    font-size: 1.1rem;
+
+.status-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--success);
+    border-radius: 50%;
+    display: inline-block;
 }
+
+[data-testid="stChatInput"] {
+    background: linear-gradient(180deg, transparent 0%, var(--page) 36%) !important;
+    border-top: 1px solid var(--border) !important;
+}
+
+[data-testid="stChatInput"] textarea {
+    background: var(--input) !important;
+    border: 1px solid var(--border-strong) !important;
+    border-radius: 12px !important;
+    min-height: 3.25rem !important;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    box-shadow: var(--shadow) !important;
+    font-size: 0.94rem !important;
+}
+
+[data-testid="stChatInput"] textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--soft), var(--shadow) !important;
+}
+
+[data-testid="stChatInput"] textarea::placeholder {
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+}
+
+[data-testid="stChatInput"] button {
+    background: var(--gradient) !important;
+    border-radius: 10px !important;
+}
+
+.stButton > button {
+    background: var(--gradient) !important;
+    border: none !important;
+    border-radius: 9px !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    font-weight: 850 !important;
+    min-height: 2.45rem !important;
+    font-size: 0.78rem !important;
+    box-shadow: 0 12px 24px rgba(37, 99, 235, 0.16) !important;
+}
+
+.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 30px rgba(37, 99, 235, 0.22) !important;
+}
+
+[data-testid="stExpander"],
+[data-testid="stDataFrame"],
+[data-testid="stPlotlyChart"],
+.stAlert {
+    border-radius: 10px !important;
+    border: 1px solid var(--border) !important;
+    background: var(--surface) !important;
+    box-shadow: var(--shadow) !important;
+}
+
+hr {
+    border: 0 !important;
+    height: 1px !important;
+    background: var(--border) !important;
+    margin: 1rem 0 !important;
+}
+
+.powered-by {
+    text-align: center;
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+    font-size: 0.7rem;
+    font-weight: 650;
+}
+
+@media (max-width: 900px) {
+    [data-testid="stAppViewBlockContainer"] {
+        padding: 1rem 1rem 7rem !important;
+    }
+
+    .shell-topbar {
+        flex-direction: column;
+    }
+
+    .source-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .page-title {
+        font-size: 1.45rem;
+    }
+}
+
 </style>
 """)
 
-# Inject themed CSS
+
 t = DARK_THEME if is_dark else LIGHT_THEME
 st.markdown(CSS_TEMPLATE.substitute(t), unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════
-# SESSION STATE
+# AUTHENTICATION GATE
 # ══════════════════════════════════════════════════════
 
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if st.session_state.user is None:
+    # Auth-page styles
+    st.markdown(
+        '<style>'
+        '.auth-brand{text-align:center;margin-bottom:1.5rem}'
+        '.auth-brand-icon{width:56px;height:56px;display:inline-grid;place-items:center;'
+        'border-radius:14px;background:var(--gradient);color:#fff!important;'
+        '-webkit-text-fill-color:#fff!important;font-weight:900;font-size:1.3rem;'
+        'margin-bottom:.75rem;box-shadow:0 12px 28px rgba(37,99,235,.18)}'
+        '.auth-title{font-size:1.6rem;font-weight:900;margin:0;line-height:1.2}'
+        '.auth-subtitle{color:var(--text-2)!important;-webkit-text-fill-color:var(--text-2)!important;'
+        'font-size:.88rem;margin-top:.35rem}'
+        '.stTabs [data-baseweb="tab-list"]{gap:0;justify-content:center}'
+        '.stTabs [data-baseweb="tab"]{font-weight:700!important;font-size:.85rem!important}'
+        '</style>',
+        unsafe_allow_html=True,
+    )
+
+    _auth_l, _auth_c, _auth_r = st.columns([1, 2, 1])
+    with _auth_c:
+        st.markdown(
+            '<div class="auth-brand">'
+            '<div class="auth-brand-icon">FA</div>'
+            '<div class="auth-title">Financial Analyst</div>'
+            '<div class="auth-subtitle">Sign in to access your AI workspace</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        login_tab, signup_tab = st.tabs(["🔑 Log In", "✨ Sign Up"])
+
+        with login_tab:
+            with st.form("login_form"):
+                login_email = st.text_input("Email", placeholder="you@example.com", key="login_email")
+                login_password = st.text_input("Password", type="password", placeholder="Your password", key="login_password")
+                login_submitted = st.form_submit_button("Sign In", use_container_width=True)
+
+            if login_submitted:
+                if not login_email or not login_password:
+                    st.error("Please enter both email and password.")
+                else:
+                    with st.spinner("Signing in..."):
+                        result = login_user(supabase, login_email, login_password)
+                    if result["success"]:
+                        st.session_state.user = result["user"]
+                        st.rerun()
+                    else:
+                        st.error(result["error"])
+
+        with signup_tab:
+            with st.form("signup_form"):
+                signup_email = st.text_input("Email", placeholder="you@example.com", key="signup_email")
+                signup_password = st.text_input("Password", type="password", placeholder="Min 6 characters", key="signup_password")
+                signup_confirm = st.text_input("Confirm Password", type="password", placeholder="Re-enter password", key="signup_confirm")
+                signup_submitted = st.form_submit_button("Create Account", use_container_width=True)
+
+            if signup_submitted:
+                if not signup_email or not signup_password:
+                    st.error("Please fill in all fields.")
+                elif signup_password != signup_confirm:
+                    st.error("Passwords do not match.")
+                elif len(signup_password) < 6:
+                    st.error("Password must be at least 6 characters.")
+                else:
+                    with st.spinner("Creating account..."):
+                        result = signup_user(supabase, signup_email, signup_password)
+                    if result["success"]:
+                        st.success(result["message"])
+                    else:
+                        st.error(result["error"])
+
+    st.stop()
+
+
+# ══════════════════════════════════════════════════════
+# SESSION STATE (authenticated user)
+# ══════════════════════════════════════════════════════
+
+user_id = st.session_state.user.id
+
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = load_chat_history(supabase, user_id)
 if "df" not in st.session_state:
     st.session_state.df = None
 if "vectorstore" not in st.session_state:
@@ -513,36 +1805,62 @@ if "pdf_name" not in st.session_state:
     st.session_state.pdf_name = None
 if "csv_name" not in st.session_state:
     st.session_state.csv_name = None
+if "voice_input" not in st.session_state:
+    st.session_state.voice_input = ""
 
-
-# ══════════════════════════════════════════════════════
-# SIDEBAR
-# ══════════════════════════════════════════════════════
 
 with st.sidebar:
-    # ── Theme Toggle ────────────────────────────
+    st.markdown(
+        '<div class="app-brand">'
+        '<div class="brand-mark">FA</div>'
+        '<div><div class="brand-title">Financial Analyst</div>'
+        '<div class="brand-subtitle">Production AI workspace</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── User Info + Logout ───────────────────────
+    _user_email = st.session_state.user.email or "User"
+    _u_col1, _u_col2 = st.columns([3, 1])
+    with _u_col1:
+        st.markdown(
+            '<div style="font-size:0.78rem;font-weight:700;color:var(--text-2,#4B5563);'
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0.4rem 0;">'
+            '👤 %s</div>' % _user_email,
+            unsafe_allow_html=True,
+        )
+    with _u_col2:
+        if st.button("↩", key="logout_btn", help="Sign out"):
+            logout_user(supabase)
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+
+    st.markdown('<div class="theme-row">', unsafe_allow_html=True)
     t_col1, t_col2, t_col3 = st.columns([1, 2, 1])
     with t_col1:
         st.markdown('<div class="theme-icon">☀️</div>', unsafe_allow_html=True)
     with t_col2:
-        theme_toggle = st.toggle("Dark Mode", value=is_dark, key="theme_toggle")
+        theme_toggle = st.toggle("Dark", value=is_dark, key="theme_toggle")
         if theme_toggle != is_dark:
             st.session_state.theme = "dark" if theme_toggle else "light"
             st.rerun()
     with t_col3:
         st.markdown('<div class="theme-icon">🌙</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.divider()
-
-    # ── Header Card ─────────────────────────────
     st.markdown(
-        '<div class="sb-card"><h3>📁 Data Sources</h3>'
-        '<p>Upload CSV or PDF files to analyze with AI</p></div>',
+        '<div class="sidebar-panel">'
+        '<h3>Data Sources</h3>'
+        '<p>Upload a CSV for analytics or a PDF for retrieval-based document answers.</p>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
-    # ── CSV Upload ──────────────────────────────
-    st.markdown("##### 📄 CSV Data")
+    st.markdown(
+        '<div class="upload-label"><strong>CSV dataset</strong><span>Analysis + charts</span></div>',
+        unsafe_allow_html=True,
+    )
     csv_file = st.file_uploader(
         "Upload a CSV file for data analysis & charts",
         type=["csv"],
@@ -562,25 +1880,24 @@ with st.sidebar:
             num_cols = len(df.select_dtypes(include="number").columns)
             st.markdown(
                 '<div class="stats-row">'
-                '<div class="stat-box"><div class="stat-num">%s</div>'
-                '<div class="stat-lbl">Rows</div></div>'
-                '<div class="stat-box"><div class="stat-num">%d</div>'
-                '<div class="stat-lbl">Columns</div></div>'
-                '<div class="stat-box"><div class="stat-num">%d</div>'
-                '<div class="stat-lbl">Numeric</div></div>'
+                '<div class="stat-box"><div class="stat-num">%s</div><div class="stat-lbl">Rows</div></div>'
+                '<div class="stat-box"><div class="stat-num">%d</div><div class="stat-lbl">Columns</div></div>'
+                '<div class="stat-box"><div class="stat-num">%d</div><div class="stat-lbl">Numeric</div></div>'
                 '</div>' % ("{:,}".format(df.shape[0]), df.shape[1], num_cols),
                 unsafe_allow_html=True,
             )
 
-            with st.expander("🔍 Preview Data", expanded=False):
+            with st.expander("Preview dataset", expanded=False):
                 st.dataframe(df.head(10), use_container_width=True)
 
         except FileValidationError as e:
             st.error("❌ %s" % e)
             st.session_state.df = None
 
-    # ── PDF Upload ──────────────────────────────
-    st.markdown("##### 📑 PDF Document")
+    st.markdown(
+        '<div class="upload-label"><strong>PDF document</strong><span>Search + Q&A</span></div>',
+        unsafe_allow_html=True,
+    )
     pdf_file = st.file_uploader(
         "Upload any PDF to search & ask questions",
         type=["pdf"],
@@ -597,63 +1914,100 @@ with st.sidebar:
             try:
                 file_bytes = pdf_file.getvalue()
                 validate_file_size(file_bytes, config.max_pdf_size_mb, pdf_file.name)
-                with st.spinner("🔄 Processing PDF... (first time may take 1-2 min)"):
+                with st.spinner("Indexing PDF..."):
                     st.session_state.vectorstore = process_pdf(file_bytes, config)
-                st.success("✅ **%s** indexed and ready!" % pdf_file.name)
+                st.markdown(
+                    '<div class="status-online"><span class="status-dot"></span>'
+                    '<span>%s ready</span></div>' % pdf_file.name,
+                    unsafe_allow_html=True,
+                )
             except (FileValidationError, RAGProcessingError) as e:
                 st.error("❌ %s" % e)
                 st.session_state.vectorstore = None
         else:
-            st.success("✅ **%s** — ready to query" % pdf_file.name)
-
-    # ── Status ──────────────────────────────────
-    st.divider()
+            st.markdown(
+                '<div class="status-online"><span class="status-dot"></span>'
+                '<span>%s ready</span></div>' % pdf_file.name,
+                unsafe_allow_html=True,
+            )
 
     if st.session_state.df is None and st.session_state.vectorstore is None:
         st.markdown(
-            "> 👋 **Getting Started**\n>\n"
-            "> Upload a **CSV** for data analysis & charts, "
-            "or a **PDF** to search its content.\n>\n"
-            "> Or just type a question below for general AI insights!"
+            '<div class="empty-state">'
+            '<div class="empty-title">No source attached</div>'
+            '<p>You can still ask general finance questions, or upload files for grounded answers.</p>'
+            '</div>',
+            unsafe_allow_html=True,
         )
 
-    # ── Controls ────────────────────────────────
+    st.divider()
+
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🗑️ Clear Chat", use_container_width=True):
+        if st.button("Clear", use_container_width=True):
+            clear_chat_history(supabase, user_id)
             st.session_state.messages = []
             st.session_state.chart_counter = 0
             st.rerun()
     with col2:
-        if st.button("🔄 Reset All", use_container_width=True):
+        if st.button("Reset", use_container_width=True):
+            clear_chat_history(supabase, user_id)
             for key in ["messages", "df", "vectorstore", "chart_counter", "pdf_name", "csv_name"]:
                 if key in st.session_state:
                     del st.session_state[key]
             st.rerun()
 
     st.divider()
-    st.caption("Powered by Groq · LangChain · FAISS")
+    st.markdown(
+        '<div class="powered-by">Groq · LangChain · FAISS · Supabase</div>',
+        unsafe_allow_html=True,
+    )
 
 
-# ══════════════════════════════════════════════════════
-# HERO HEADER
-# ══════════════════════════════════════════════════════
+csv_status = "Connected" if st.session_state.df is not None else "Not attached"
+pdf_status = "Indexed" if st.session_state.vectorstore is not None else "Not attached"
+message_count = len(st.session_state.messages)
 
 st.markdown(
-    '<div class="hero-wrap">'
-    '<div class="hero-chip">✨ AI-Powered Analysis</div>'
-    '<h1 class="hero-heading">Financial Analyst Agent</h1>'
-    '<p class="hero-sub">'
-    "Upload your data, ask questions in plain English, and get instant insights, "
-    "interactive charts, and answers powered by advanced AI."
-    "</p></div>",
+    '<div class="shell-topbar">'
+    '<div>'
+    '<div class="page-kicker">AI FINANCIAL ANALYSIS CONSOLE</div>'
+    '<h1 class="page-title">Ask, analyze, and visualize financial data.</h1>'
+    '<div class="page-subtitle">A focused workspace for CSV analysis, PDF search, chart generation, and general financial reasoning.</div>'
+    '</div>'
+    '<div class="live-pill"><span class="live-dot"></span>Model online</div>'
+    '</div>',
     unsafe_allow_html=True,
 )
 
+st.markdown(
+    '<div class="source-grid">'
+    '<div class="source-card">'
+    '<div class="source-card-top"><div class="source-icon">CSV</div><div class="source-status">%s</div></div>'
+    '<h3>Dataset Analysis</h3><p>Ask questions about rows, columns, trends, summaries, and comparisons.</p>'
+    '</div>'
+    '<div class="source-card">'
+    '<div class="source-card-top"><div class="source-icon">PDF</div><div class="source-status">%s</div></div>'
+    '<h3>Document Intelligence</h3><p>Search uploaded PDFs and answer from retrieved document context.</p>'
+    '</div>'
+    '<div class="source-card">'
+    '<div class="source-card-top"><div class="source-icon">AI</div><div class="source-status">%d messages</div></div>'
+    '<h3>Analyst Chat</h3><p>Use plain English to request insights, explanations, and charts.</p>'
+    '</div>'
+    '</div>' % (csv_status, pdf_status, message_count),
+    unsafe_allow_html=True,
+)
 
-# ══════════════════════════════════════════════════════
-# CHAT INTERFACE
-# ══════════════════════════════════════════════════════
+st.markdown(
+    '<div class="chat-frame">'
+    '<div class="chat-frame-header">'
+    '<div><div class="chat-title">Conversation</div><div class="chat-meta">Answers are routed automatically to CSV, PDF, chart, or general reasoning.</div></div>'
+    '<div class="chat-meta">%d total</div>'
+    '</div>'
+    '</div>' % message_count,
+    unsafe_allow_html=True,
+)
+
 
 def _source_badge(route):
     """Return an HTML source badge for the message."""
@@ -667,10 +2021,8 @@ def _source_badge(route):
     return '<div class="src-tag"><span class="src-dot %s"></span>%s</div>' % (css_class, label)
 
 
-# Chart template matching theme
 _chart_template = "plotly_dark" if is_dark else "plotly_white"
 
-# Display past messages
 for idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         if message.get("chart") is not None:
@@ -680,9 +2032,56 @@ for idx, message in enumerate(st.session_state.messages):
         if message.get("badge"):
             st.markdown(message["badge"], unsafe_allow_html=True)
 
+# ======================================================
+# VOICE INPUT - Native Streamlit audio + Groq Whisper
+# ======================================================
 
-# Chat input
-if prompt := st.chat_input("Ask anything about your data..."):
+from groq import Groq as GroqClient
+import io
+
+voice_col1, voice_col2 = st.columns([1, 11])
+with voice_col1:
+    st.markdown(
+        '<div style="padding-top:0.35rem;font-size:0.75rem;font-weight:700;'
+        'color:var(--muted,#94A3B8);white-space:nowrap;">'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+audio_bytes = st.audio_input(
+    "Record a voice question",
+    key="voice_recorder",
+    help="Click the mic, speak your question, then click stop. It will be transcribed and sent automatically.",
+)
+
+if audio_bytes is not None and audio_bytes != st.session_state.get("_last_audio"):
+    st.session_state["_last_audio"] = audio_bytes
+    with st.spinner("Transcribing your voice..."):
+        try:
+            groq_client = GroqClient(api_key=config.groq_api_key)
+            audio_data = audio_bytes.read()
+            transcription = groq_client.audio.transcriptions.create(
+                file=("recording.wav", audio_data),
+                model="whisper-large-v3",
+                response_format="text",
+                language="en",
+                temperature=0.0,
+            )
+            voice_text = transcription.strip() if isinstance(transcription, str) else str(transcription).strip()
+            if voice_text:
+                st.session_state.voice_input = voice_text
+                st.rerun()
+        except Exception as e:
+            logger.error("Voice transcription error: %s", e, exc_info=True)
+            st.warning("Could not transcribe audio: %s" % str(e))
+
+# Process voice input if available
+_voice_prompt = ""
+if st.session_state.voice_input:
+    _voice_prompt = st.session_state.voice_input
+    st.session_state.voice_input = ""
+
+if prompt := (_voice_prompt or st.chat_input("Ask about revenue, risk, trends, filings, charts, or uploaded files...")):
     prompt = sanitize_user_input(prompt)
 
     if not prompt:
@@ -692,11 +2091,13 @@ if prompt := st.chat_input("Ask anything about your data..."):
     st.session_state.messages.append(
         {"role": "user", "content": prompt, "chart": None, "badge": None}
     )
+    save_message(supabase, user_id, "user", prompt)
+
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("✨ Analyzing..."):
+        with st.spinner("Analyzing..."):
             route = route_question(
                 llm,
                 prompt,
@@ -711,7 +2112,12 @@ if prompt := st.chat_input("Ask anything about your data..."):
                     x_col, y_col = detect_columns(prompt, df)
                     chart_type = detect_chart_type(prompt)
                     fig = generate_chart(chart_type, x_col, y_col, df)
-                    fig.update_layout(template=_chart_template)
+                    fig.update_layout(
+                        template=_chart_template,
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        margin={"l": 24, "r": 24, "t": 48, "b": 32},
+                    )
 
                     st.session_state.chart_counter += 1
                     chart_key = "new_chart_%d" % st.session_state.chart_counter
@@ -724,6 +2130,7 @@ if prompt := st.chat_input("Ask anything about your data..."):
                     st.session_state.messages.append(
                         {"role": "assistant", "content": caption, "chart": fig, "badge": badge_html}
                     )
+                    save_message(supabase, user_id, "assistant", caption, badge_html, "chart")
 
                 elif route == Route.CSV:
                     answer = analyze_csv(prompt, st.session_state.df, llm)
@@ -732,6 +2139,7 @@ if prompt := st.chat_input("Ask anything about your data..."):
                     st.session_state.messages.append(
                         {"role": "assistant", "content": answer, "chart": None, "badge": badge_html}
                     )
+                    save_message(supabase, user_id, "assistant", answer, badge_html, "csv")
 
                 elif route == Route.PDF:
                     answer = query_pdf(
@@ -742,6 +2150,7 @@ if prompt := st.chat_input("Ask anything about your data..."):
                     st.session_state.messages.append(
                         {"role": "assistant", "content": answer, "chart": None, "badge": badge_html}
                     )
+                    save_message(supabase, user_id, "assistant", answer, badge_html, "pdf")
 
                 else:
                     answer = chat_with_history(llm, prompt, st.session_state.messages)
@@ -750,6 +2159,7 @@ if prompt := st.chat_input("Ask anything about your data..."):
                     st.session_state.messages.append(
                         {"role": "assistant", "content": answer, "chart": None, "badge": badge_html}
                     )
+                    save_message(supabase, user_id, "assistant", answer, badge_html, "general")
 
             except Exception as e:
                 logger.error("Error handling question: %s", e, exc_info=True)
@@ -761,3 +2171,4 @@ if prompt := st.chat_input("Ask anything about your data..."):
                 st.session_state.messages.append(
                     {"role": "assistant", "content": error_msg, "chart": None, "badge": None}
                 )
+                save_message(supabase, user_id, "assistant", error_msg)

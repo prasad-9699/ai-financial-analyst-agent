@@ -15,7 +15,7 @@ print("=" * 55)
 
 # ── Setup LLM ─────────────────────────────────────────
 llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model="qwen/qwen3.6-27b",
     temperature=0,
     groq_api_key=os.getenv("GROQ_API_KEY")
 )

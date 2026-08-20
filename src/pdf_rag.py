@@ -3,15 +3,18 @@ Generalized PDF RAG (Retrieval-Augmented Generation) pipeline.
 
 Works with ANY PDF document — financial reports, research papers, contracts,
 manuals, articles, etc. Not limited to any specific document type.
+
+Includes automatic OCR fallback for scanned PDFs using Tesseract.
 """
 
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from langchain.chains import RetrievalQA
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -51,6 +54,95 @@ def _get_embeddings(model_name: str) -> HuggingFaceEmbeddings:
     return _embeddings_cache
 
 
+def _pages_have_text(documents: List[Document]) -> bool:
+    """
+    Check whether PyPDFLoader extracted meaningful text.
+
+    Returns False if all pages are empty or whitespace-only,
+    which typically indicates a scanned (image-only) PDF.
+    """
+    for doc in documents:
+        content = doc.page_content.strip()
+        if len(content) > 50:  # At least 50 chars of real text
+            return True
+    return False
+
+
+def _extract_text_with_ocr(file_path: str, tesseract_cmd: str = "tesseract") -> List[Document]:
+    """
+    Extract text from a scanned PDF using Tesseract OCR.
+
+    Pipeline: PDF → page images (pdf2image) → OCR text (pytesseract)
+
+    Args:
+        file_path: Path to the PDF file.
+        tesseract_cmd: Path to the Tesseract binary.
+
+    Returns:
+        List of Document objects with OCR-extracted text.
+
+    Raises:
+        RAGProcessingError: If OCR extraction fails.
+    """
+    try:
+        import pytesseract
+        from pdf2image import convert_from_path
+
+        # Set Tesseract command path if custom
+        if tesseract_cmd and tesseract_cmd != "tesseract":
+            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
+        logger.info("Starting OCR extraction for scanned PDF: %s", file_path)
+
+        # Convert PDF pages to images
+        images = convert_from_path(file_path, dpi=300)
+        logger.info("Converted PDF to %d page images for OCR", len(images))
+
+        documents = []
+        for page_num, image in enumerate(images, start=1):
+            # Run OCR on each page image
+            text = pytesseract.image_to_string(image, lang="eng")
+            text = text.strip()
+
+            if text:
+                documents.append(Document(
+                    page_content=text,
+                    metadata={
+                        "source": file_path,
+                        "page": page_num,
+                        "extraction_method": "ocr",
+                    },
+                ))
+                logger.debug("OCR page %d: extracted %d characters", page_num, len(text))
+            else:
+                logger.warning("OCR page %d: no text extracted", page_num)
+
+        if not documents:
+            raise RAGProcessingError(
+                "OCR could not extract any text from the scanned PDF. "
+                "The document may contain only images without readable text, "
+                "or the scan quality may be too low."
+            )
+
+        logger.info("OCR completed: extracted text from %d/%d pages", len(documents), len(images))
+        return documents
+
+    except ImportError as e:
+        raise RAGProcessingError(
+            "OCR dependencies are not installed. Please install pytesseract and pdf2image:\n"
+            "  pip install pytesseract pdf2image Pillow\n"
+            "Also install Tesseract OCR: https://github.com/tesseract-ocr/tesseract"
+        ) from e
+    except RAGProcessingError:
+        raise
+    except Exception as e:
+        logger.error("OCR extraction failed: %s", e)
+        raise RAGProcessingError(
+            f"OCR processing failed. Ensure Tesseract is installed and on your PATH.\n"
+            f"Details: {e}"
+        ) from e
+
+
 def process_pdf(file_bytes: bytes, config: AppConfig) -> FAISS:
     """
     Process a PDF file into a FAISS vector store for retrieval.
@@ -58,7 +150,9 @@ def process_pdf(file_bytes: bytes, config: AppConfig) -> FAISS:
     This is a generalized pipeline that works with ANY PDF — financial reports,
     research papers, legal documents, manuals, articles, etc.
 
-    Pipeline: Load → Split → Embed → Store
+    For scanned PDFs (image-only), automatically falls back to Tesseract OCR.
+
+    Pipeline: Load → [OCR fallback if needed] → Split → Embed → Store
 
     Args:
         file_bytes: Raw bytes of the uploaded PDF.
@@ -76,19 +170,28 @@ def process_pdf(file_bytes: bytes, config: AppConfig) -> FAISS:
         # Step 1: Save to temp file (PyPDFLoader needs a file path)
         temp_path = save_temp_file(file_bytes, suffix=".pdf")
 
-        # Step 2: Load PDF pages
+        # Step 2: Try loading PDF pages with PyPDFLoader (text-based PDFs)
         loader = PyPDFLoader(temp_path)
         documents = loader.load()
 
-        if not documents:
-            raise RAGProcessingError(
-                "The PDF appears to be empty or could not be read. "
-                "Please check that it contains selectable text (not just scanned images)."
+        # Step 3: Check if text was actually extracted
+        extraction_method = "text"
+        if not documents or not _pages_have_text(documents):
+            # Scanned PDF detected — fall back to OCR
+            logger.warning(
+                "PyPDFLoader extracted no readable text (%d pages). "
+                "Falling back to Tesseract OCR...",
+                len(documents) if documents else 0,
             )
+            documents = _extract_text_with_ocr(temp_path, config.tesseract_cmd)
+            extraction_method = "ocr"
 
-        logger.info("PDF loaded: %d pages", len(documents))
+        logger.info(
+            "PDF loaded via %s: %d pages with text",
+            extraction_method, len(documents),
+        )
 
-        # Step 3: Split into chunks
+        # Step 4: Split into chunks
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=config.chunk_size,
             chunk_overlap=config.chunk_overlap,
@@ -102,7 +205,7 @@ def process_pdf(file_bytes: bytes, config: AppConfig) -> FAISS:
         logger.info("Text split into %d chunks (size=%d, overlap=%d)",
                      len(chunks), config.chunk_size, config.chunk_overlap)
 
-        # Step 4: Create embeddings and vector store
+        # Step 5: Create embeddings and vector store
         embeddings = _get_embeddings(config.embedding_model)
         vectorstore = FAISS.from_documents(chunks, embeddings)
 
@@ -114,7 +217,7 @@ def process_pdf(file_bytes: bytes, config: AppConfig) -> FAISS:
     except Exception as e:
         logger.error("PDF processing failed: %s", e)
         raise RAGProcessingError(
-            f"Failed to process the PDF. Please ensure it's a valid, text-based PDF.\n"
+            f"Failed to process the PDF. Please ensure it's a valid PDF file.\n"
             f"Details: {e}"
         ) from e
     finally:
@@ -168,3 +271,4 @@ def query_pdf(question: str, vectorstore: FAISS, llm: ChatGroq, top_k: int = 4) 
             f"I had trouble searching the document. This might be a temporary issue. "
             f"Please try again.\n\nDetails: {e}"
         ) from e
+

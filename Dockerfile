@@ -10,9 +10,13 @@ FROM python:3.11-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# System dependencies
+# System dependencies (build-essential for C extensions,
+# tesseract-ocr for scanned-PDF OCR, poppler-utils for pdf2image)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        tesseract-ocr \
+        poppler-utils && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

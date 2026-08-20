@@ -10,6 +10,10 @@ runOnSave = false
 gatherUsageStats = false
 
 [theme]
+primaryColor = "#2DD4BF"
+backgroundColor = "#080C18"
+secondaryBackgroundColor = "#0F1629"
+textColor = "#E2E8F0"
 font = "sans serif"
 
 [client]

@@ -6,7 +6,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 load_dotenv()
 
-llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0, groq_api_key=os.getenv("GROQ_API_KEY"))
+llm = ChatGroq(model="qwen/qwen3.6-27b", temperature=0, groq_api_key=os.getenv("GROQ_API_KEY"))
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", "You are a Senior Financial Analyst AI. Analyze data and give clear bullet point insights."),

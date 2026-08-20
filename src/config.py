@@ -44,7 +44,7 @@ class AppConfig:
 
     # LLM
     groq_api_key: str = ""
-    model_name: str = "llama-3.3-70b-versatile"
+    model_name: str = "qwen/qwen3.6-27b"
     model_temperature: float = 0.0
 
     # File limits (MB)
@@ -56,6 +56,13 @@ class AppConfig:
     chunk_overlap: int = 200
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     retriever_top_k: int = 4
+
+    # Supabase (auth & chat persistence)
+    supabase_url: str = ""
+    supabase_key: str = ""
+
+    # OCR (Tesseract)
+    tesseract_cmd: str = "tesseract"
 
     # Logging
     log_level: str = "INFO"
@@ -81,9 +88,26 @@ def load_config() -> AppConfig:
             "Then add to .env: GROQ_API_KEY=your_key_here"
         )
 
+    supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    supabase_key = os.getenv("SUPABASE_KEY", "").strip()
+
+    if not supabase_url or supabase_url == "your_supabase_project_url":
+        raise ConfigurationError(
+            "SUPABASE_URL is not set. Please add your Supabase project URL to .env.\n"
+            "Create a free project at: https://supabase.com/dashboard\n"
+            "Then add to .env: SUPABASE_URL=https://your-project.supabase.co"
+        )
+
+    if not supabase_key or supabase_key == "your_supabase_anon_key":
+        raise ConfigurationError(
+            "SUPABASE_KEY is not set. Please add your Supabase anon key to .env.\n"
+            "Find it in: Supabase Dashboard → Settings → API → anon public key\n"
+            "Then add to .env: SUPABASE_KEY=your_anon_key"
+        )
+
     return AppConfig(
         groq_api_key=api_key,
-        model_name=os.getenv("MODEL_NAME", "llama-3.3-70b-versatile"),
+        model_name=os.getenv("MODEL_NAME", "qwen/qwen3.6-27b"),
         model_temperature=float(os.getenv("MODEL_TEMPERATURE", "0")),
         max_csv_size_mb=int(os.getenv("MAX_CSV_SIZE_MB", "50")),
         max_pdf_size_mb=int(os.getenv("MAX_PDF_SIZE_MB", "20")),
@@ -93,6 +117,9 @@ def load_config() -> AppConfig:
             "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
         ),
         retriever_top_k=int(os.getenv("RETRIEVER_TOP_K", "4")),
+        supabase_url=supabase_url,
+        supabase_key=supabase_key,
+        tesseract_cmd=os.getenv("TESSERACT_CMD", "tesseract"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
     )
 
