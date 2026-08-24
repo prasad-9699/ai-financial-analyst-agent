@@ -31,8 +31,13 @@ FALLBACK_MODELS = [
 
 
 def strip_thinking_tags(text: str) -> str:
-    """Remove <think>...</think> blocks from model output."""
+    """Remove <think>...</think> blocks and any partial thinking tags from model output."""
+    # Remove complete <think>...</think> blocks
     cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    # Remove unclosed <think> blocks (tag opened but never closed)
+    cleaned = re.sub(r"<think>.*", "", cleaned, flags=re.DOTALL)
+    # Remove any stray closing tags
+    cleaned = re.sub(r"</think>", "", cleaned)
     return cleaned.strip()
 
 
@@ -160,10 +165,13 @@ def chat_with_history(llm, prompt, history, config=None):
     """
     messages = [
         SystemMessage(content=(
+            "/no_think "
             "You are a helpful AI Financial Analyst assistant. "
             "You have memory of the full conversation. "
             "Refer to previous messages when relevant. "
-            "Current Year: 2026."
+            "Current Year: 2026. "
+            "IMPORTANT: Do NOT include any <think> tags or reasoning process in your response. "
+            "Give the final answer directly."
         ))
     ]
 
