@@ -1038,55 +1038,59 @@ for idx, message in enumerate(st.session_state.messages):
             st.markdown(message["badge"], unsafe_allow_html=True)
 
 # ======================================================
-# VOICE INPUT - Native Streamlit audio + Groq Whisper
+# VOICE INPUT (optional — works if Streamlit >= 1.33)
 # ======================================================
 
-from groq import Groq as GroqClient
-import io
+_voice_prompt = ""
 
-voice_col1, voice_col2 = st.columns([1, 11])
-with voice_col1:
-    st.markdown(
-        '<div style="padding-top:0.35rem;font-size:0.75rem;font-weight:700;'
-        'color:var(--muted,#94A3B8);white-space:nowrap;">'
-        '</div>',
-        unsafe_allow_html=True,
+try:
+    from groq import Groq as GroqClient
+
+    audio_bytes = st.audio_input(
+        "🎙️ Record a voice question",
+        key="voice_recorder",
+        help="Click the mic, speak your question, then click stop.",
     )
 
-audio_bytes = st.audio_input(
-    "Record a voice question",
-    key="voice_recorder",
-    help="Click the mic, speak your question, then click stop. It will be transcribed and sent automatically.",
-)
+    if audio_bytes is not None:
+        # Use hash to detect new recordings
+        audio_data = audio_bytes.read()
+        audio_hash = hash(audio_data)
 
-if audio_bytes is not None and audio_bytes != st.session_state.get("_last_audio"):
-    st.session_state["_last_audio"] = audio_bytes
-    with st.spinner("Transcribing your voice..."):
-        try:
-            groq_client = GroqClient(api_key=config.groq_api_key)
-            audio_data = audio_bytes.read()
-            transcription = groq_client.audio.transcriptions.create(
-                file=("recording.wav", audio_data),
-                model="whisper-large-v3",
-                response_format="text",
-                language="en",
-                temperature=0.0,
-            )
-            voice_text = transcription.strip() if isinstance(transcription, str) else str(transcription).strip()
-            if voice_text:
-                st.session_state.voice_input = voice_text
-                st.rerun()
-        except Exception as e:
-            logger.error("Voice transcription error: %s", e, exc_info=True)
-            st.warning("Could not transcribe audio: %s" % str(e))
+        if audio_hash != st.session_state.get("_last_audio_hash"):
+            st.session_state["_last_audio_hash"] = audio_hash
+            with st.spinner("🎤 Transcribing your voice..."):
+                try:
+                    groq_client = GroqClient(api_key=config.groq_api_key)
+                    transcription = groq_client.audio.transcriptions.create(
+                        file=("recording.wav", audio_data),
+                        model="whisper-large-v3",
+                        response_format="text",
+                        language="en",
+                        temperature=0.0,
+                    )
+                    voice_text = transcription.strip() if isinstance(transcription, str) else str(transcription).strip()
+                    if voice_text:
+                        st.session_state.voice_input = voice_text
+                        st.rerun()
+                except Exception as e:
+                    logger.error("Voice transcription error: %s", e, exc_info=True)
+                    st.warning("Could not transcribe audio: %s" % str(e))
+except Exception:
+    # st.audio_input not available in this Streamlit version — skip silently
+    pass
 
 # Process voice input if available
-_voice_prompt = ""
-if st.session_state.voice_input:
+if st.session_state.get("voice_input"):
     _voice_prompt = st.session_state.voice_input
     st.session_state.voice_input = ""
 
-if prompt := (_voice_prompt or st.chat_input("Ask about revenue, risk, trends, filings, charts, or uploaded files...")):
+
+# ======================================================
+# CHAT INPUT
+# ======================================================
+
+if prompt := (_voice_prompt or st.chat_input("Ask about your data — sum, average, trends, charts, or any question...")):
     prompt = sanitize_user_input(prompt)
 
     if not prompt:
@@ -1096,13 +1100,14 @@ if prompt := (_voice_prompt or st.chat_input("Ask about revenue, risk, trends, f
     st.session_state.messages.append(
         {"role": "user", "content": prompt, "chart": None, "badge": None}
     )
-    save_message(supabase, user_id, "user", prompt)
+    if supabase:
+        save_message(supabase, user_id, "user", prompt)
 
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Analyzing..."):
+        with st.spinner("✨ Analyzing..."):
             route = route_question(
                 llm,
                 prompt,
@@ -1135,7 +1140,8 @@ if prompt := (_voice_prompt or st.chat_input("Ask about revenue, risk, trends, f
                     st.session_state.messages.append(
                         {"role": "assistant", "content": caption, "chart": fig, "badge": badge_html}
                     )
-                    save_message(supabase, user_id, "assistant", caption, badge_html, "chart")
+                    if supabase:
+                        save_message(supabase, user_id, "assistant", caption, badge_html, "chart")
 
                 elif route == Route.CSV:
                     answer = analyze_csv(prompt, st.session_state.df, llm)
@@ -1144,7 +1150,8 @@ if prompt := (_voice_prompt or st.chat_input("Ask about revenue, risk, trends, f
                     st.session_state.messages.append(
                         {"role": "assistant", "content": answer, "chart": None, "badge": badge_html}
                     )
-                    save_message(supabase, user_id, "assistant", answer, badge_html, "csv")
+                    if supabase:
+                        save_message(supabase, user_id, "assistant", answer, badge_html, "csv")
 
                 elif route == Route.PDF:
                     answer = query_pdf(
@@ -1155,7 +1162,8 @@ if prompt := (_voice_prompt or st.chat_input("Ask about revenue, risk, trends, f
                     st.session_state.messages.append(
                         {"role": "assistant", "content": answer, "chart": None, "badge": badge_html}
                     )
-                    save_message(supabase, user_id, "assistant", answer, badge_html, "pdf")
+                    if supabase:
+                        save_message(supabase, user_id, "assistant", answer, badge_html, "pdf")
 
                 else:
                     answer = chat_with_history(llm, prompt, st.session_state.messages)
@@ -1164,7 +1172,8 @@ if prompt := (_voice_prompt or st.chat_input("Ask about revenue, risk, trends, f
                     st.session_state.messages.append(
                         {"role": "assistant", "content": answer, "chart": None, "badge": badge_html}
                     )
-                    save_message(supabase, user_id, "assistant", answer, badge_html, "general")
+                    if supabase:
+                        save_message(supabase, user_id, "assistant", answer, badge_html, "general")
 
             except Exception as e:
                 logger.error("Error handling question: %s", e, exc_info=True)
@@ -1176,4 +1185,5 @@ if prompt := (_voice_prompt or st.chat_input("Ask about revenue, risk, trends, f
                 st.session_state.messages.append(
                     {"role": "assistant", "content": error_msg, "chart": None, "badge": None}
                 )
-                save_message(supabase, user_id, "assistant", error_msg)
+                if supabase:
+                    save_message(supabase, user_id, "assistant", error_msg)
