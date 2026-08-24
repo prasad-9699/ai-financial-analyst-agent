@@ -73,7 +73,11 @@ Respond with EXACTLY ONE word: chart, csv, pdf, or general."""
             SystemMessage(content=system_prompt),
             HumanMessage(content=question)
         ])
-        decision = response.content.strip().lower()
+        raw = response.content
+        # Strip <think>...</think> reasoning blocks from model output
+        import re
+        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
+        decision = cleaned.strip().lower()
 
         # Parse LLM decision
         if "chart" in decision and has_csv:

@@ -44,7 +44,7 @@ class AppConfig:
 
     # LLM
     groq_api_key: str = ""
-    model_name: str = "qwen/qwen3.6-27b"
+    model_name: str = "openai/gpt-oss-120b"
     model_temperature: float = 0.0
 
     # File limits (MB)
@@ -91,23 +91,15 @@ def load_config() -> AppConfig:
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
     supabase_key = os.getenv("SUPABASE_KEY", "").strip()
 
+    # Supabase is optional — auth & chat persistence will be disabled without it
     if not supabase_url or supabase_url == "your_supabase_project_url":
-        raise ConfigurationError(
-            "SUPABASE_URL is not set. Please add your Supabase project URL to .env.\n"
-            "Create a free project at: https://supabase.com/dashboard\n"
-            "Then add to .env: SUPABASE_URL=https://your-project.supabase.co"
-        )
-
+        supabase_url = ""
     if not supabase_key or supabase_key == "your_supabase_anon_key":
-        raise ConfigurationError(
-            "SUPABASE_KEY is not set. Please add your Supabase anon key to .env.\n"
-            "Find it in: Supabase Dashboard → Settings → API → anon public key\n"
-            "Then add to .env: SUPABASE_KEY=your_anon_key"
-        )
+        supabase_key = ""
 
     return AppConfig(
         groq_api_key=api_key,
-        model_name=os.getenv("MODEL_NAME", "qwen/qwen3.6-27b"),
+        model_name=os.getenv("MODEL_NAME", "openai/gpt-oss-120b"),
         model_temperature=float(os.getenv("MODEL_TEMPERATURE", "0")),
         max_csv_size_mb=int(os.getenv("MAX_CSV_SIZE_MB", "50")),
         max_pdf_size_mb=int(os.getenv("MAX_PDF_SIZE_MB", "20")),

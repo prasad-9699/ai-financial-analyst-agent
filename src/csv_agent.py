@@ -44,6 +44,10 @@ def analyze_csv(question: str, df: pd.DataFrame, llm: ChatGroq) -> str:
         if not answer:
             return "I analyzed the data but couldn't generate a clear answer. Could you rephrase your question?"
 
+        # Strip <think>...</think> reasoning blocks from model output
+        import re
+        answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.DOTALL).strip()
+
         logger.info("CSV analysis completed successfully")
         return answer
 

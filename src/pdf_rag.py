@@ -262,6 +262,10 @@ def query_pdf(question: str, vectorstore: FAISS, llm: ChatGroq, top_k: int = 4) 
                 "Try rephrasing or asking about a specific section."
             )
 
+        # Strip <think>...</think> reasoning blocks from model output
+        import re
+        answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.DOTALL).strip()
+
         logger.info("PDF query completed successfully")
         return answer
 
