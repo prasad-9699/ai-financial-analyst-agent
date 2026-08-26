@@ -20,6 +20,9 @@ logger = logging.getLogger("financial_analyst.utils")
 ALLOWED_CSV_EXTENSIONS = {".csv"}
 ALLOWED_PDF_EXTENSIONS = {".pdf"}
 
+# Encodings to try in order when reading CSV files
+_CSV_ENCODINGS = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
+
 
 def validate_file_size(file_bytes: bytes, max_size_mb: int, file_name: str = "file") -> None:
     """
@@ -44,30 +47,65 @@ def validate_file_size(file_bytes: bytes, max_size_mb: int, file_name: str = "fi
 
 def validate_csv(file) -> pd.DataFrame:
     """
-    Validate and parse a CSV file upload.
+    Validate and parse a CSV file upload with automatic encoding detection.
+
+    Tries multiple encodings (utf-8, latin-1, cp1252) to handle international
+    characters. Strips whitespace from column names and drops fully empty columns.
 
     Args:
         file: Streamlit UploadedFile object.
 
     Returns:
-        Parsed DataFrame.
+        Parsed and cleaned DataFrame.
 
     Raises:
         FileValidationError: If the CSV is malformed or empty.
     """
-    try:
-        df = pd.read_csv(file)
-    except pd.errors.EmptyDataError:
-        raise FileValidationError("The CSV file is empty. Please upload a file with data.")
-    except pd.errors.ParserError as e:
+    df = None
+    last_error = None
+
+    # Try each encoding in order
+    for encoding in _CSV_ENCODINGS:
+        try:
+            file.seek(0)
+            df = pd.read_csv(file, encoding=encoding)
+            logger.info("CSV parsed successfully with encoding: %s", encoding)
+            break
+        except UnicodeDecodeError:
+            last_error = f"Encoding {encoding} failed"
+            continue
+        except pd.errors.EmptyDataError:
+            raise FileValidationError("The CSV file is empty. Please upload a file with data.")
+        except pd.errors.ParserError as e:
+            raise FileValidationError(
+                f"Could not parse the CSV file. Please check the format.\nDetails: {e}"
+            )
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    if df is None:
         raise FileValidationError(
-            f"Could not parse the CSV file. Please check the format.\nDetails: {e}"
+            f"Error reading CSV — could not decode with any supported encoding.\nDetails: {last_error}"
         )
-    except Exception as e:
-        raise FileValidationError(f"Error reading CSV: {e}")
 
     if df.empty:
         raise FileValidationError("The CSV file contains headers but no data rows.")
+
+    # Clean up column names: strip whitespace
+    df.columns = df.columns.str.strip()
+
+    # Drop fully empty columns (all NaN)
+    empty_cols = [c for c in df.columns if df[c].isna().all()]
+    if empty_cols:
+        df = df.drop(columns=empty_cols)
+        logger.info("Dropped %d empty columns: %s", len(empty_cols), empty_cols)
+
+    # Drop unnamed columns (pandas artifact from extra commas)
+    unnamed = [c for c in df.columns if str(c).startswith("Unnamed")]
+    if unnamed:
+        df = df.drop(columns=unnamed)
+        logger.info("Dropped %d unnamed columns", len(unnamed))
 
     if len(df.columns) < 2:
         raise FileValidationError(
@@ -133,17 +171,51 @@ def sanitize_user_input(text: str, max_length: int = 2000) -> str:
 
 
 def format_dataframe_info(df: pd.DataFrame) -> str:
-    """Generate a human-readable summary of a DataFrame."""
+    """Generate a human-readable summary of a DataFrame with rich details."""
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     text_cols = df.select_dtypes(include="object").columns.tolist()
     date_cols = df.select_dtypes(include="datetime").columns.tolist()
 
+    # Memory usage
+    mem_mb = df.memory_usage(deep=True).sum() / (1024 * 1024)
+
+    # Null info
+    total_nulls = df.isna().sum().sum()
+    total_cells = df.shape[0] * df.shape[1]
+    null_pct = (total_nulls / total_cells * 100) if total_cells > 0 else 0
+
     parts = [
-        f"**Rows:** {df.shape[0]:,}  |  **Columns:** {df.shape[1]}",
+        f"**Rows:** {df.shape[0]:,}  |  **Columns:** {df.shape[1]}  |  **Memory:** {mem_mb:.2f} MB",
         f"**Numeric:** {', '.join(numeric_cols) if numeric_cols else 'None'}",
         f"**Text:** {', '.join(text_cols) if text_cols else 'None'}",
     ]
     if date_cols:
         parts.append(f"**Date:** {', '.join(date_cols)}")
 
+    if total_nulls > 0:
+        parts.append(f"**Missing values:** {total_nulls:,} ({null_pct:.1f}%)")
+    else:
+        parts.append("**Missing values:** None (clean)")
+
     return "\n".join(parts)
+
+
+def get_csv_quick_insights(df: pd.DataFrame) -> list:
+    """
+    Generate quick stat insights for the top numeric columns.
+
+    Returns a list of dicts: [{"col": name, "min": x, "max": y, "mean": z}, ...]
+    """
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()[:4]
+    insights = []
+    for col in numeric_cols:
+        try:
+            insights.append({
+                "col": col,
+                "min": df[col].min(),
+                "max": df[col].max(),
+                "mean": df[col].mean(),
+            })
+        except Exception:
+            continue
+    return insights

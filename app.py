@@ -34,6 +34,7 @@ from src.supabase_client import (
 )
 from src.utils import (
     format_dataframe_info,
+    get_csv_quick_insights,
     sanitize_user_input,
     validate_csv,
     validate_file_size,
@@ -78,51 +79,57 @@ is_dark = st.session_state.theme == "dark"
 
 
 DARK_THEME = {
-    "page": "#080A0F",
-    "sidebar": "#0D111A",
-    "surface": "#111827",
-    "surface_2": "#151D2B",
-    "surface_3": "#1B2433",
-    "border": "rgba(148, 163, 184, 0.16)",
-    "border_strong": "rgba(148, 163, 184, 0.28)",
-    "text": "#F3F4F6",
-    "text_2": "#B6C0D1",
-    "muted": "#7C879A",
+    "page": "#060A12",
+    "sidebar": "#0A0F1A",
+    "surface": "#0F1628",
+    "surface_2": "#131C30",
+    "surface_3": "#182338",
+    "border": "rgba(148, 163, 184, 0.10)",
+    "border_strong": "rgba(148, 163, 184, 0.22)",
+    "text": "#F1F5F9",
+    "text_2": "#94A3B8",
+    "muted": "#64748B",
     "accent": "#14B8A6",
-    "accent_2": "#2563EB",
+    "accent_2": "#6366F1",
     "accent_3": "#F59E0B",
     "success": "#22C55E",
     "danger": "#F43F5E",
-    "soft": "rgba(20, 184, 166, 0.12)",
-    "soft_2": "rgba(37, 99, 235, 0.12)",
-    "shadow": "0 18px 50px rgba(0, 0, 0, 0.28)",
-    "input": "#0F172A",
+    "soft": "rgba(20, 184, 166, 0.10)",
+    "soft_2": "rgba(99, 102, 241, 0.10)",
+    "shadow": "0 20px 60px rgba(0, 0, 0, 0.35)",
+    "input": "#0C1222",
     "code": "#67E8F9",
-    "gradient": "linear-gradient(135deg, #14B8A6 0%, #2563EB 100%)",
+    "gradient": "linear-gradient(135deg, #14B8A6 0%, #6366F1 50%, #8B5CF6 100%)",
+    "gradient_2": "linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%)",
+    "glass": "rgba(15, 22, 40, 0.60)",
+    "glass_border": "rgba(148, 163, 184, 0.12)",
 }
 
 LIGHT_THEME = {
-    "page": "#F4F7FB",
+    "page": "#F1F5F9",
     "sidebar": "#FFFFFF",
     "surface": "#FFFFFF",
     "surface_2": "#F8FAFC",
-    "surface_3": "#EEF3F9",
-    "border": "rgba(15, 23, 42, 0.10)",
-    "border_strong": "rgba(15, 23, 42, 0.16)",
-    "text": "#111827",
-    "text_2": "#4B5563",
-    "muted": "#8792A5",
-    "accent": "#0F766E",
-    "accent_2": "#2563EB",
-    "accent_3": "#B45309",
+    "surface_3": "#E2E8F0",
+    "border": "rgba(15, 23, 42, 0.08)",
+    "border_strong": "rgba(15, 23, 42, 0.14)",
+    "text": "#0F172A",
+    "text_2": "#475569",
+    "muted": "#94A3B8",
+    "accent": "#0D9488",
+    "accent_2": "#6366F1",
+    "accent_3": "#D97706",
     "success": "#16A34A",
     "danger": "#E11D48",
-    "soft": "rgba(15, 118, 110, 0.10)",
-    "soft_2": "rgba(37, 99, 235, 0.08)",
-    "shadow": "0 18px 44px rgba(15, 23, 42, 0.08)",
+    "soft": "rgba(13, 148, 136, 0.08)",
+    "soft_2": "rgba(99, 102, 241, 0.06)",
+    "shadow": "0 20px 50px rgba(15, 23, 42, 0.06)",
     "input": "#FFFFFF",
-    "code": "#0F766E",
-    "gradient": "linear-gradient(135deg, #0F766E 0%, #2563EB 100%)",
+    "code": "#0D9488",
+    "gradient": "linear-gradient(135deg, #0D9488 0%, #6366F1 50%, #8B5CF6 100%)",
+    "gradient_2": "linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%)",
+    "glass": "rgba(255, 255, 255, 0.65)",
+    "glass_border": "rgba(15, 23, 42, 0.08)",
 }
 
 
@@ -130,6 +137,7 @@ CSS_TEMPLATE = Template("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
+/* ═══════ CSS Variables ═══════ */
 :root {
     --page: $page;
     --sidebar: $sidebar;
@@ -152,8 +160,50 @@ CSS_TEMPLATE = Template("""
     --input: $input;
     --code: $code;
     --gradient: $gradient;
+    --gradient-2: $gradient_2;
+    --glass: $glass;
+    --glass-border: $glass_border;
 }
 
+/* ═══════ Keyframe Animations ═══════ */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position: 200% center; }
+}
+
+@keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 16px rgba(20, 184, 166, 0.25); }
+    50%      { box-shadow: 0 0 30px rgba(99, 102, 241, 0.35); }
+}
+
+@keyframes pulseDot {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.35); opacity: 0.7; }
+}
+
+@keyframes borderGlow {
+    0%   { border-color: var(--accent); }
+    50%  { border-color: var(--accent-2); }
+    100% { border-color: var(--accent); }
+}
+
+@keyframes gradientMove {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50%      { transform: translateY(-4px); }
+}
+
+/* ═══════ Base ═══════ */
 html, body, .stApp {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
     background: var(--page) !important;
@@ -165,8 +215,8 @@ html, body, .stApp {
 }
 
 [data-testid="stAppViewBlockContainer"] {
-    max-width: 1240px !important;
-    padding: 1.25rem 2rem 7rem !important;
+    max-width: 1280px !important;
+    padding: 1.5rem 2.5rem 7rem !important;
 }
 
 #MainMenu, footer, header {
@@ -178,7 +228,7 @@ html, body, .stApp {
 .stApp h3, .stApp h4, .stApp h5, .stApp h6 {
     color: var(--text) !important;
     -webkit-text-fill-color: var(--text) !important;
-    letter-spacing: 0 !important;
+    letter-spacing: -0.01em !important;
 }
 
 .stApp a {
@@ -190,22 +240,14 @@ html, body, .stApp {
     background: var(--soft) !important;
     border: 1px solid var(--border) !important;
     border-radius: 6px !important;
-    padding: 0.12rem 0.35rem !important;
+    padding: 0.15rem 0.4rem !important;
+    font-size: 0.85em !important;
 }
 
-section[data-testid="stSidebar"] {
-    background: var(--sidebar) !important;
-    border-right: 1px solid var(--border) !important;
-    box-shadow: 12px 0 40px rgba(15, 23, 42, 0.05) !important;
-}
-
-section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
-    padding: 1.1rem 1rem !important;
-}
-
+/* ═══════ Scrollbar ═══════ */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -217,51 +259,75 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     background: var(--accent);
 }
 
+/* ═══════ Sidebar ═══════ */
+section[data-testid="stSidebar"] {
+    background: var(--glass) !important;
+    backdrop-filter: blur(24px) saturate(1.3) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(1.3) !important;
+    border-right: 1px solid var(--glass-border) !important;
+    box-shadow: 12px 0 50px rgba(0, 0, 0, 0.06) !important;
+}
+
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    padding: 1.2rem 1rem !important;
+}
+
+/* ═══════ Brand ═══════ */
 .app-brand {
     display: flex;
     align-items: center;
     gap: 0.85rem;
     padding: 0.35rem 0.15rem 1rem;
+    animation: fadeInUp 0.5s ease both;
 }
 
 .brand-mark {
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
     display: grid;
     place-items: center;
-    border-radius: 10px;
+    border-radius: 12px;
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
     background: var(--gradient);
+    background-size: 200% 200%;
+    animation: gradientMove 4s ease infinite, pulseGlow 3s ease infinite;
     font-weight: 900;
-    box-shadow: 0 12px 28px rgba(37, 99, 235, 0.18);
+    font-size: 0.95rem;
+    letter-spacing: 0 !important;
 }
 
 .brand-title {
-    font-weight: 850;
-    font-size: 0.98rem;
+    font-weight: 900;
+    font-size: 1rem;
     line-height: 1.1;
+    letter-spacing: -0.02em !important;
 }
 
 .brand-subtitle {
     color: var(--muted) !important;
     -webkit-text-fill-color: var(--muted) !important;
-    font-size: 0.74rem;
+    font-size: 0.72rem;
     margin-top: 0.2rem;
+    font-weight: 600;
 }
 
+/* ═══════ Sidebar Panels ═══════ */
 .sidebar-panel {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--surface);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: var(--glass);
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
     box-shadow: var(--shadow);
     padding: 1rem;
     margin: 0.85rem 0;
+    animation: fadeInUp 0.6s ease both;
 }
 
 .sidebar-panel h3 {
     margin: 0 0 0.35rem;
-    font-size: 0.92rem;
+    font-size: 0.88rem;
     font-weight: 800;
 }
 
@@ -269,10 +335,11 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     margin: 0;
     color: var(--text-2) !important;
     -webkit-text-fill-color: var(--text-2) !important;
-    font-size: 0.78rem;
-    line-height: 1.45;
+    font-size: 0.76rem;
+    line-height: 1.5;
 }
 
+/* ═══════ Theme Toggle ═══════ */
 .theme-row {
     display: grid;
     grid-template-columns: 34px 1fr 34px;
@@ -288,11 +355,18 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     height: 34px;
     display: grid;
     place-items: center;
-    border-radius: 9px;
+    border-radius: 10px;
     border: 1px solid var(--border);
     background: var(--surface-2);
+    transition: all 0.25s ease;
 }
 
+.theme-icon:hover {
+    border-color: var(--accent);
+    transform: scale(1.08);
+}
+
+/* ═══════ Upload ═══════ */
 .upload-label {
     display: flex;
     justify-content: space-between;
@@ -312,21 +386,23 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
 
 [data-testid="stFileUploader"] {
     background: var(--surface) !important;
-    border: 1px dashed var(--border-strong) !important;
-    border-radius: 10px !important;
+    border: 2px dashed var(--border-strong) !important;
+    border-radius: 12px !important;
     padding: 0.35rem !important;
+    transition: all 0.3s ease !important;
 }
 
 [data-testid="stFileUploader"]:hover {
     border-color: var(--accent) !important;
-    box-shadow: 0 0 0 3px var(--soft);
+    box-shadow: 0 0 0 4px var(--soft), var(--shadow);
+    animation: borderGlow 2s ease infinite;
 }
 
 [data-testid="stFileUploaderDropzone"],
 [data-testid="stFileUploadDropzone"] {
     background: var(--surface-2) !important;
     border: 0 !important;
-    border-radius: 9px !important;
+    border-radius: 10px !important;
     min-height: 5.5rem !important;
 }
 
@@ -347,18 +423,27 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     border-radius: 8px !important;
 }
 
+/* ═══════ Stats Row ═══════ */
 .stats-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 0.45rem;
     margin: 0.8rem 0;
+    animation: fadeInUp 0.5s ease both;
 }
 
 .stat-box {
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 9px;
+    border-radius: 10px;
     padding: 0.75rem 0.55rem;
+    transition: all 0.25s ease;
+}
+
+.stat-box:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(20, 184, 166, 0.10);
 }
 
 .stat-num {
@@ -371,17 +456,72 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
 .stat-lbl {
     color: var(--muted) !important;
     -webkit-text-fill-color: var(--muted) !important;
-    font-size: 0.66rem;
+    font-size: 0.65rem;
     font-weight: 750;
     margin-top: 0.18rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em !important;
 }
 
+/* ═══════ Insights Panel ═══════ */
+.insights-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.75rem;
+    margin: 0.6rem 0;
+    animation: fadeInUp 0.6s ease both;
+}
+
+.insights-title {
+    font-size: 0.72rem;
+    font-weight: 850;
+    color: var(--accent-2) !important;
+    -webkit-text-fill-color: var(--accent-2) !important;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em !important;
+}
+
+.insight-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.72rem;
+}
+
+.insight-item:last-child {
+    border-bottom: none;
+}
+
+.insight-col {
+    font-weight: 700;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.insight-val {
+    font-weight: 800;
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.7rem;
+}
+
+/* ═══════ Empty State ═══════ */
 .empty-state {
     background: var(--soft);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.85rem;
+    border-radius: 12px;
+    padding: 0.9rem;
     margin-top: 0.8rem;
+    animation: fadeInUp 0.5s ease both;
 }
 
 .empty-title {
@@ -400,52 +540,79 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     line-height: 1.45;
 }
 
+/* ═══════ Hero / Top Bar ═══════ */
 .shell-topbar {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.2rem;
+    animation: fadeInUp 0.5s ease both;
 }
 
 .page-kicker {
     color: var(--accent) !important;
     -webkit-text-fill-color: var(--accent) !important;
-    font-size: 0.73rem;
+    font-size: 0.7rem;
     font-weight: 850;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.kicker-line {
+    width: 28px;
+    height: 2px;
+    background: var(--gradient);
+    border-radius: 2px;
 }
 
 .page-title {
     margin: 0;
-    font-size: 1.85rem;
-    line-height: 1.12;
+    font-size: 2rem;
+    line-height: 1.1;
     font-weight: 900;
     color: var(--text) !important;
     -webkit-text-fill-color: var(--text) !important;
+    letter-spacing: -0.03em !important;
+}
+
+.page-title .title-gradient {
+    background: var(--gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text;
+    color: transparent !important;
 }
 
 .page-subtitle {
     color: var(--text-2) !important;
     -webkit-text-fill-color: var(--text-2) !important;
-    font-size: 0.92rem;
-    margin-top: 0.35rem;
+    font-size: 0.9rem;
+    margin-top: 0.4rem;
     max-width: 680px;
-    line-height: 1.5;
+    line-height: 1.55;
+    font-weight: 450;
 }
 
 .live-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
+    gap: 0.5rem;
+    background: var(--glass);
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid var(--glass-border);
     border-radius: 999px;
-    padding: 0.48rem 0.7rem;
+    padding: 0.5rem 0.85rem;
     box-shadow: var(--shadow);
-    font-size: 0.76rem;
+    font-size: 0.74rem;
     font-weight: 800;
     white-space: nowrap;
+    animation: float 3s ease infinite;
 }
 
 .live-dot {
@@ -454,70 +621,134 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     background: var(--success);
     border-radius: 50%;
     box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+    animation: pulseDot 2s ease infinite;
 }
 
+/* ═══════ Source Cards ═══════ */
 .source-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.8rem;
-    margin-bottom: 1.1rem;
+    gap: 0.85rem;
+    margin-bottom: 1.2rem;
 }
 
 .source-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1rem;
+    background: var(--glass);
+    backdrop-filter: blur(16px) saturate(1.2) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(1.2) !important;
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 1.1rem;
     box-shadow: var(--shadow);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: fadeInUp 0.6s ease both;
+    position: relative;
+    overflow: hidden;
 }
+
+.source-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--gradient);
+    background-size: 200% 100%;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.source-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent);
+    box-shadow: 0 24px 60px rgba(20, 184, 166, 0.12);
+}
+
+.source-card:hover::before {
+    opacity: 1;
+    animation: shimmer 2s linear infinite;
+}
+
+.source-card:nth-child(2) { animation-delay: 0.1s; }
+.source-card:nth-child(3) { animation-delay: 0.2s; }
 
 .source-card-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.7rem;
 }
 
 .source-icon {
-    width: 34px;
-    height: 34px;
+    width: 38px;
+    height: 38px;
     display: grid;
     place-items: center;
-    border-radius: 9px;
-    background: var(--soft);
+    border-radius: 10px;
+    font-weight: 900;
+    font-size: 0.72rem;
+    letter-spacing: 0 !important;
+    transition: all 0.3s ease;
+}
+
+.source-icon.icon-csv {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+    color: var(--accent-2) !important;
+    -webkit-text-fill-color: var(--accent-2) !important;
+}
+
+.source-icon.icon-pdf {
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.15) 0%, rgba(13, 148, 136, 0.15) 100%);
     color: var(--accent) !important;
     -webkit-text-fill-color: var(--accent) !important;
-    font-weight: 900;
+}
+
+.source-icon.icon-ai {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.15) 100%);
+    color: var(--accent-3) !important;
+    -webkit-text-fill-color: var(--accent-3) !important;
+}
+
+.source-card:hover .source-icon {
+    transform: scale(1.1) rotate(-3deg);
 }
 
 .source-status {
     color: var(--muted) !important;
     -webkit-text-fill-color: var(--muted) !important;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em !important;
 }
 
 .source-card h3 {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 850;
+    letter-spacing: -0.01em !important;
 }
 
 .source-card p {
     margin: 0.3rem 0 0;
     color: var(--text-2) !important;
     -webkit-text-fill-color: var(--text-2) !important;
-    font-size: 0.78rem;
-    line-height: 1.45;
+    font-size: 0.76rem;
+    line-height: 1.5;
 }
 
+/* ═══════ Chat Frame ═══════ */
 .chat-frame {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
+    background: var(--glass);
+    backdrop-filter: blur(16px) saturate(1.2) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(1.2) !important;
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
     box-shadow: var(--shadow);
-    padding: 1rem;
+    padding: 1.1rem;
     margin-bottom: 1rem;
+    animation: fadeInUp 0.6s ease both;
 }
 
 .chat-frame-header {
@@ -526,34 +757,43 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     align-items: center;
     gap: 0.75rem;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 0.8rem;
-    margin-bottom: 0.95rem;
+    padding-bottom: 0.85rem;
+    margin-bottom: 1rem;
 }
 
 .chat-title {
     font-weight: 850;
-    font-size: 0.98rem;
+    font-size: 1rem;
+    letter-spacing: -0.01em !important;
 }
 
 .chat-meta {
     color: var(--muted) !important;
     -webkit-text-fill-color: var(--muted) !important;
-    font-size: 0.76rem;
-    font-weight: 750;
+    font-size: 0.74rem;
+    font-weight: 650;
 }
 
+/* ═══════ Chat Messages ═══════ */
 [data-testid="stChatMessage"] {
     background: var(--surface-2) !important;
     border: 1px solid var(--border) !important;
-    border-radius: 12px !important;
+    border-radius: 14px !important;
     box-shadow: none !important;
-    padding: 1rem 1.1rem !important;
-    margin-bottom: 0.75rem !important;
+    padding: 1rem 1.15rem !important;
+    margin-bottom: 0.8rem !important;
+    animation: fadeInUp 0.4s ease both;
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent !important;
+}
+
+[data-testid="stChatMessage"]:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06) !important;
 }
 
 [data-testid="stChatMessage"] p {
-    font-size: 0.96rem !important;
-    line-height: 1.65 !important;
+    font-size: 0.94rem !important;
+    line-height: 1.7 !important;
 }
 
 [data-testid="chatAvatarIcon-user"],
@@ -562,6 +802,7 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     border: 1px solid var(--border) !important;
 }
 
+/* ═══════ Source Badge ═══════ */
 .src-tag {
     display: inline-flex;
     align-items: center;
@@ -569,12 +810,17 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     background: var(--soft);
     border: 1px solid var(--border);
     border-radius: 999px;
-    padding: 0.35rem 0.65rem;
+    padding: 0.35rem 0.7rem;
     color: var(--accent) !important;
     -webkit-text-fill-color: var(--accent) !important;
     font-size: 0.7rem;
     font-weight: 850;
     margin-top: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.src-tag:hover {
+    transform: translateX(2px);
 }
 
 .src-dot {
@@ -584,24 +830,26 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     display: inline-block;
 }
 
-.src-dot.csv { background: var(--accent-2); }
-.src-dot.pdf { background: var(--accent); }
-.src-dot.chart { background: var(--danger); }
-.src-dot.general { background: var(--accent-3); }
+.src-dot.csv   { background: var(--accent-2); box-shadow: 0 0 6px rgba(99, 102, 241, 0.4); }
+.src-dot.pdf   { background: var(--accent);   box-shadow: 0 0 6px rgba(20, 184, 166, 0.4); }
+.src-dot.chart { background: var(--danger);   box-shadow: 0 0 6px rgba(244, 63, 94, 0.4); }
+.src-dot.general { background: var(--accent-3); box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
 
+/* ═══════ Status Badge ═══════ */
 .status-online {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    background: rgba(34, 197, 94, 0.10);
-    border: 1px solid rgba(34, 197, 94, 0.22);
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.18);
     border-radius: 999px;
-    padding: 0.35rem 0.6rem;
+    padding: 0.38rem 0.65rem;
     color: var(--success) !important;
     -webkit-text-fill-color: var(--success) !important;
     font-size: 0.72rem;
     font-weight: 850;
     margin-top: 0.55rem;
+    animation: fadeInUp 0.4s ease both;
 }
 
 .status-dot {
@@ -610,8 +858,10 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     background: var(--success);
     border-radius: 50%;
     display: inline-block;
+    animation: pulseDot 2s ease infinite;
 }
 
+/* ═══════ Chat Input ═══════ */
 [data-testid="stChatInput"] {
     background: linear-gradient(180deg, transparent 0%, var(--page) 36%) !important;
     border-top: 1px solid var(--border) !important;
@@ -620,17 +870,18 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
 [data-testid="stChatInput"] textarea {
     background: var(--input) !important;
     border: 1px solid var(--border-strong) !important;
-    border-radius: 12px !important;
+    border-radius: 14px !important;
     min-height: 3.25rem !important;
     color: var(--text) !important;
     -webkit-text-fill-color: var(--text) !important;
     box-shadow: var(--shadow) !important;
-    font-size: 0.94rem !important;
+    font-size: 0.93rem !important;
+    transition: all 0.25s ease !important;
 }
 
 [data-testid="stChatInput"] textarea:focus {
     border-color: var(--accent) !important;
-    box-shadow: 0 0 0 3px var(--soft), var(--shadow) !important;
+    box-shadow: 0 0 0 4px var(--soft), var(--shadow) !important;
 }
 
 [data-testid="stChatInput"] textarea::placeholder {
@@ -640,31 +891,42 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
 
 [data-testid="stChatInput"] button {
     background: var(--gradient) !important;
-    border-radius: 10px !important;
+    border-radius: 12px !important;
+    transition: all 0.2s ease;
 }
 
+[data-testid="stChatInput"] button:hover {
+    transform: scale(1.06);
+}
+
+/* ═══════ Buttons ═══════ */
 .stButton > button {
     background: var(--gradient) !important;
+    background-size: 200% 200% !important;
     border: none !important;
-    border-radius: 9px !important;
+    border-radius: 10px !important;
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
     font-weight: 850 !important;
-    min-height: 2.45rem !important;
+    min-height: 2.5rem !important;
     font-size: 0.78rem !important;
-    box-shadow: 0 12px 24px rgba(37, 99, 235, 0.16) !important;
+    box-shadow: 0 10px 24px rgba(99, 102, 241, 0.18) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    letter-spacing: 0 !important;
 }
 
 .stButton > button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 16px 30px rgba(37, 99, 235, 0.22) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 16px 32px rgba(99, 102, 241, 0.24) !important;
+    animation: gradientMove 3s ease infinite;
 }
 
+/* ═══════ Expander, DataFrame, Plotly, Alerts ═══════ */
 [data-testid="stExpander"],
 [data-testid="stDataFrame"],
 [data-testid="stPlotlyChart"],
 .stAlert {
-    border-radius: 10px !important;
+    border-radius: 12px !important;
     border: 1px solid var(--border) !important;
     background: var(--surface) !important;
     box-shadow: var(--shadow) !important;
@@ -677,14 +939,49 @@ hr {
     margin: 1rem 0 !important;
 }
 
+/* ═══════ Suggestion Chips ═══════ */
+.chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.6rem 0 1rem;
+    animation: fadeInUp 0.5s ease both;
+}
+
+.chip-row .stButton > button {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 999px !important;
+    min-height: 2rem !important;
+    padding: 0 0.85rem !important;
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+    transition: all 0.25s ease !important;
+}
+
+.chip-row .stButton > button:hover {
+    background: var(--soft) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(20, 184, 166, 0.10) !important;
+}
+
+/* ═══════ Powered-by Footer ═══════ */
 .powered-by {
     text-align: center;
     color: var(--muted) !important;
     -webkit-text-fill-color: var(--muted) !important;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 650;
+    padding-top: 0.3rem;
 }
 
+/* ═══════ Responsive ═══════ */
 @media (max-width: 900px) {
     [data-testid="stAppViewBlockContainer"] {
         padding: 1rem 1rem 7rem !important;
@@ -699,12 +996,144 @@ hr {
     }
 
     .page-title {
-        font-size: 1.45rem;
+        font-size: 1.5rem;
     }
+}
+
+/* ═══════ Form Inputs (Login / Signup / General) ═══════ */
+.stTextInput > div > div > input,
+.stTextInput input,
+[data-testid="stTextInput"] input {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    border: 1px solid var(--border-strong) !important;
+    border-radius: 10px !important;
+    padding: 0.6rem 0.75rem !important;
+    font-size: 0.9rem !important;
+    transition: all 0.25s ease !important;
+    caret-color: var(--accent) !important;
+}
+
+.stTextInput > div > div > input:focus,
+.stTextInput input:focus,
+[data-testid="stTextInput"] input:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--soft), var(--shadow) !important;
+    outline: none !important;
+}
+
+.stTextInput > div > div > input::placeholder,
+.stTextInput input::placeholder,
+[data-testid="stTextInput"] input::placeholder {
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+    opacity: 1 !important;
+}
+
+/* Labels */
+.stTextInput > label,
+[data-testid="stTextInput"] label,
+.stSelectbox > label,
+.stFileUploader > label {
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    font-weight: 700 !important;
+    font-size: 0.84rem !important;
+}
+
+/* Select boxes */
+.stSelectbox > div > div,
+[data-testid="stSelectbox"] > div > div {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    border: 1px solid var(--border-strong) !important;
+    border-radius: 10px !important;
+}
+
+/* Toggle / Switch */
+.stToggle label span,
+[data-testid="stToggle"] label span {
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+}
+
+/* Tab labels */
+.stTabs [data-baseweb="tab"] {
+    color: var(--text-2) !important;
+    -webkit-text-fill-color: var(--text-2) !important;
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+}
+
+/* Form submit buttons */
+.stFormSubmitButton > button,
+[data-testid="stFormSubmitButton"] > button {
+    background: var(--gradient) !important;
+    background-size: 200% 200% !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-weight: 850 !important;
+    font-size: 0.85rem !important;
+    min-height: 2.6rem !important;
+    box-shadow: 0 10px 24px rgba(99, 102, 241, 0.18) !important;
+    transition: all 0.3s ease !important;
+}
+
+.stFormSubmitButton > button:hover,
+[data-testid="stFormSubmitButton"] > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 16px 32px rgba(99, 102, 241, 0.24) !important;
+}
+
+/* Download button */
+.stDownloadButton > button {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    border: 1px solid var(--border-strong) !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+}
+
+.stDownloadButton > button:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+    -webkit-text-fill-color: var(--accent) !important;
+    background: var(--soft) !important;
+}
+
+/* Password toggle eye icon */
+.stTextInput button[kind="icon"],
+[data-testid="stTextInput"] button {
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+}
+
+/* Expander */
+[data-testid="stExpander"] summary span {
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    font-weight: 700 !important;
+}
+
+/* Alert/Error/Success messages */
+.stAlert p,
+[data-testid="stAlert"] p {
+    color: inherit !important;
+    -webkit-text-fill-color: inherit !important;
 }
 
 </style>
 """)
+
 
 
 t = DARK_THEME if is_dark else LIGHT_THEME
@@ -723,13 +1152,16 @@ if st.session_state.user is None:
     st.markdown(
         '<style>'
         '.auth-brand{text-align:center;margin-bottom:1.5rem}'
-        '.auth-brand-icon{width:56px;height:56px;display:inline-grid;place-items:center;'
-        'border-radius:14px;background:var(--gradient);color:#fff!important;'
-        '-webkit-text-fill-color:#fff!important;font-weight:900;font-size:1.3rem;'
-        'margin-bottom:.75rem;box-shadow:0 12px 28px rgba(37,99,235,.18)}'
-        '.auth-title{font-size:1.6rem;font-weight:900;margin:0;line-height:1.2}'
+        '.auth-brand-icon{width:60px;height:60px;display:inline-grid;place-items:center;'
+        'border-radius:16px;background:var(--gradient);background-size:200% 200%;'
+        'animation:gradientMove 4s ease infinite,pulseGlow 3s ease infinite;'
+        'color:#fff!important;-webkit-text-fill-color:#fff!important;'
+        'font-weight:900;font-size:1.4rem;margin-bottom:.8rem;'
+        'box-shadow:0 16px 40px rgba(99,102,241,.22)}'
+        '.auth-title{font-size:1.7rem;font-weight:900;margin:0;line-height:1.15;'
+        'letter-spacing:-0.03em}'
         '.auth-subtitle{color:var(--text-2)!important;-webkit-text-fill-color:var(--text-2)!important;'
-        'font-size:.88rem;margin-top:.35rem}'
+        'font-size:.88rem;margin-top:.4rem;font-weight:450}'
         '.stTabs [data-baseweb="tab-list"]{gap:0;justify-content:center}'
         '.stTabs [data-baseweb="tab"]{font-weight:700!important;font-size:.85rem!important}'
         '</style>',
@@ -819,7 +1251,7 @@ with st.sidebar:
         '<div class="app-brand">'
         '<div class="brand-mark">FA</div>'
         '<div><div class="brand-title">Financial Analyst</div>'
-        '<div class="brand-subtitle">Production AI workspace</div></div>'
+        '<div class="brand-subtitle">AI-powered workspace</div></div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -856,7 +1288,7 @@ with st.sidebar:
 
     st.markdown(
         '<div class="sidebar-panel">'
-        '<h3>Data Sources</h3>'
+        '<h3>📂 Data Sources</h3>'
         '<p>Upload a CSV for analytics or a PDF for retrieval-based document answers.</p>'
         '</div>',
         unsafe_allow_html=True,
@@ -883,6 +1315,7 @@ with st.sidebar:
 
             df = st.session_state.df
             num_cols = len(df.select_dtypes(include="number").columns)
+            null_pct = (df.isna().sum().sum() / (df.shape[0] * df.shape[1]) * 100) if df.shape[0] > 0 else 0
             st.markdown(
                 '<div class="stats-row">'
                 '<div class="stat-box"><div class="stat-num">%s</div><div class="stat-lbl">Rows</div></div>'
@@ -891,6 +1324,25 @@ with st.sidebar:
                 '</div>' % ("{:,}".format(df.shape[0]), df.shape[1], num_cols),
                 unsafe_allow_html=True,
             )
+
+            # ── Auto CSV Insights ────────────────────────
+            insights = get_csv_quick_insights(df)
+            if insights:
+                items_html = ""
+                for ins in insights:
+                    items_html += (
+                        '<div class="insight-item">'
+                        '<span class="insight-col">%s</span>'
+                        '<span class="insight-val">μ %s</span>'
+                        '</div>' % (ins["col"], "{:,.0f}".format(ins["mean"]))
+                    )
+                st.markdown(
+                    '<div class="insights-panel">'
+                    '<div class="insights-title">⚡ Quick Insights</div>'
+                    '%s'
+                    '</div>' % items_html,
+                    unsafe_allow_html=True,
+                )
 
             with st.expander("Preview dataset", expanded=False):
                 st.dataframe(df.head(10), use_container_width=True)
@@ -962,6 +1414,23 @@ with st.sidebar:
                     del st.session_state[key]
             st.rerun()
 
+    # ── Export Chat ──────────────────────────────
+    if st.session_state.get("messages"):
+        st.divider()
+        chat_export = "# Financial Analyst — Chat Export\n\n"
+        for msg in st.session_state.messages:
+            role = "🧑 You" if msg["role"] == "user" else "🤖 Assistant"
+            content = msg.get("content", "")
+            if content:
+                chat_export += f"### {role}\n{content}\n\n---\n\n"
+        st.download_button(
+            "📥 Export Chat",
+            data=chat_export,
+            file_name="financial_analyst_chat.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+
     st.divider()
     st.markdown(
         '<div class="powered-by">Groq · LangChain · FAISS · Supabase</div>',
@@ -976,9 +1445,9 @@ message_count = len(st.session_state.messages)
 st.markdown(
     '<div class="shell-topbar">'
     '<div>'
-    '<div class="page-kicker">AI FINANCIAL ANALYSIS CONSOLE</div>'
-    '<h1 class="page-title">Ask, analyze, and visualize financial data.</h1>'
-    '<div class="page-subtitle">A focused workspace for CSV analysis, PDF search, chart generation, and general financial reasoning.</div>'
+    '<div class="page-kicker"><span class="kicker-line"></span>AI FINANCIAL ANALYSIS CONSOLE</div>'
+    '<h1 class="page-title">Ask, analyze, and <span class="title-gradient">visualize</span> financial data.</h1>'
+    '<div class="page-subtitle">A focused workspace for CSV analysis, PDF search, chart generation, and general financial reasoning — powered by AI.</div>'
     '</div>'
     '<div class="live-pill"><span class="live-dot"></span>Model online</div>'
     '</div>',
@@ -988,25 +1457,42 @@ st.markdown(
 st.markdown(
     '<div class="source-grid">'
     '<div class="source-card">'
-    '<div class="source-card-top"><div class="source-icon">CSV</div><div class="source-status">%s</div></div>'
+    '<div class="source-card-top"><div class="source-icon icon-csv">CSV</div><div class="source-status">%s</div></div>'
     '<h3>Dataset Analysis</h3><p>Ask questions about rows, columns, trends, summaries, and comparisons.</p>'
     '</div>'
     '<div class="source-card">'
-    '<div class="source-card-top"><div class="source-icon">PDF</div><div class="source-status">%s</div></div>'
+    '<div class="source-card-top"><div class="source-icon icon-pdf">PDF</div><div class="source-status">%s</div></div>'
     '<h3>Document Intelligence</h3><p>Search uploaded PDFs and answer from retrieved document context.</p>'
     '</div>'
     '<div class="source-card">'
-    '<div class="source-card-top"><div class="source-icon">AI</div><div class="source-status">%d messages</div></div>'
+    '<div class="source-card-top"><div class="source-icon icon-ai">AI</div><div class="source-status">%d messages</div></div>'
     '<h3>Analyst Chat</h3><p>Use plain English to request insights, explanations, and charts.</p>'
     '</div>'
     '</div>' % (csv_status, pdf_status, message_count),
     unsafe_allow_html=True,
 )
 
+# ── Suggestion Chips ──────────────────────────────
+if st.session_state.df is not None and message_count == 0:
+    st.markdown('<div class="chip-row">', unsafe_allow_html=True)
+    chip_cols = st.columns(4)
+    _chip_prompts = [
+        "📊 Show total revenue",
+        "📈 Plot monthly trend",
+        "📋 Describe the dataset",
+        "🏆 Top 5 by profit",
+    ]
+    for i, label in enumerate(_chip_prompts):
+        with chip_cols[i]:
+            if st.button(label, key=f"chip_{i}"):
+                st.session_state.voice_input = label.split(" ", 1)[1] if " " in label else label
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
 st.markdown(
     '<div class="chat-frame">'
     '<div class="chat-frame-header">'
-    '<div><div class="chat-title">Conversation</div><div class="chat-meta">Answers are routed automatically to CSV, PDF, chart, or general reasoning.</div></div>'
+    '<div><div class="chat-title">💬 Conversation</div><div class="chat-meta">Answers are routed automatically to CSV, PDF, chart, or general reasoning.</div></div>'
     '<div class="chat-meta">%d total</div>'
     '</div>'
     '</div>' % message_count,
@@ -1186,4 +1672,4 @@ if prompt := (_voice_prompt or st.chat_input("Ask about your data — sum, avera
                     {"role": "assistant", "content": error_msg, "chart": None, "badge": None}
                 )
                 if supabase:
-                    save_message(supabase, user_id, "assistant", error_msg)
+                    save_message(supabase, user_id, "assistant", error_msg)
